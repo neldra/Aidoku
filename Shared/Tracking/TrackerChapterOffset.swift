@@ -2,6 +2,8 @@
 //  TrackerChapterOffset.swift
 //  Aidoku
 //
+//  Created by neldra on 5/15/26.
+//
 
 import Foundation
 

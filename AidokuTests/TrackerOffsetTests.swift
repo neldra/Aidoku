@@ -31,4 +31,16 @@ import Testing
     @Test func noUpperClampWhenTotalUnknown() {
         #expect(TrackerManager.applyChapterOffset(99, offset: 5, totalChapters: nil) == 104)
     }
+
+    @Test func fractionalChapterPreserved() {
+        #expect(TrackerManager.applyChapterOffset(12.5, offset: -2, totalChapters: 100) == 10.5)
+    }
+
+    @Test func landsExactlyOnUpperBound() {
+        #expect(TrackerManager.applyChapterOffset(98, offset: 2, totalChapters: 100) == 100)
+    }
+
+    @Test func landsExactlyOnZero() {
+        #expect(TrackerManager.applyChapterOffset(2, offset: -2, totalChapters: nil) == 0)
+    }
 }
