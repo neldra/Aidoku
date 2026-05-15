@@ -145,6 +145,8 @@ actor TrackerManager {
                 )
             }
 
+            // completion detection below intentionally uses remote state, not the
+            // offset-adjusted value (see design doc §3) — do not "fix" this
             // update reading state
             let readLastChapter = if
                 chapterNum != nil,
