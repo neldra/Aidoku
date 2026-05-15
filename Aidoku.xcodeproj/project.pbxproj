@@ -502,6 +502,8 @@
 		FBD6A40C2858D371007116C9 /* Tracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD6A40A2858D371007116C9 /* Tracker.swift */; };
 		FBD6A411285B7789007116C9 /* TrackItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD6A410285B7789007116C9 /* TrackItem.swift */; };
 		FBD6A412285B7789007116C9 /* TrackItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD6A410285B7789007116C9 /* TrackItem.swift */; };
+		FB0AB8960853103100AF1455 /* TrackerChapterOffset.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0AB8980853103100AF1457 /* TrackerChapterOffset.swift */; };
+		FB0AB8970853103100AF1456 /* TrackerChapterOffset.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0AB8980853103100AF1457 /* TrackerChapterOffset.swift */; };
 		FBD6A416285B7CC3007116C9 /* MyAnimeListTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD6A415285B7CC3007116C9 /* MyAnimeListTracker.swift */; };
 		FBD6A417285B7CC3007116C9 /* MyAnimeListTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD6A415285B7CC3007116C9 /* MyAnimeListTracker.swift */; };
 		FBD6A419285B8EBC007116C9 /* TrackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD6A418285B8EBC007116C9 /* TrackState.swift */; };
@@ -996,6 +998,7 @@
 		FBD6A4072858D365007116C9 /* TrackerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerManager.swift; sourceTree = "<group>"; };
 		FBD6A40A2858D371007116C9 /* Tracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tracker.swift; sourceTree = "<group>"; };
 		FBD6A410285B7789007116C9 /* TrackItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackItem.swift; sourceTree = "<group>"; };
+		FB0AB8980853103100AF1457 /* TrackerChapterOffset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerChapterOffset.swift; sourceTree = "<group>"; };
 		FBD6A415285B7CC3007116C9 /* MyAnimeListTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAnimeListTracker.swift; sourceTree = "<group>"; };
 		FBD6A418285B8EBC007116C9 /* TrackState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackState.swift; sourceTree = "<group>"; };
 		FBD796672ED1333C00BD05F4 /* DoubleBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleBadgeView.swift; sourceTree = "<group>"; };
@@ -2157,6 +2160,7 @@
 				FB0E1CD6288AEAE800B67BA9 /* Auth */,
 				FBD6A40F285B7776007116C9 /* Models */,
 				FBD6A4072858D365007116C9 /* TrackerManager.swift */,
+				FB0AB8980853103100AF1457 /* TrackerChapterOffset.swift */,
 				FBD6A40A2858D371007116C9 /* Tracker.swift */,
 				FB0E1CC9288AE50700B67BA9 /* OAuthTracker.swift */,
 				FB1A4E632E78A82D006F4BA8 /* EnhancedTracker.swift */,
@@ -2809,6 +2813,7 @@
 				FBFF58952E807282009367B7 /* DoneButton.swift in Sources */,
 				FB72502227CBE9170037F1C9 /* SourceInfoHeaderView.swift in Sources */,
 				FBD6A411285B7789007116C9 /* TrackItem.swift in Sources */,
+				FB0AB8960853103100AF1455 /* TrackerChapterOffset.swift in Sources */,
 				FBD6A416285B7CC3007116C9 /* MyAnimeListTracker.swift in Sources */,
 				FB7F05F82DDD6CA60036B116 /* MarkdownView.swift in Sources */,
 				FB3DDA112ECEACE20081232F /* MangaListViewController.swift in Sources */,
@@ -2972,6 +2977,7 @@
 				FB58C6B42999B5BC00A6F49F /* CoreDataManager+Source.swift in Sources */,
 				FB7F05FF2DDF79420036B116 /* KomgaSource.swift in Sources */,
 				FBD6A412285B7789007116C9 /* TrackItem.swift in Sources */,
+				FB0AB8970853103100AF1456 /* TrackerChapterOffset.swift in Sources */,
 				04B48CF82CD6836100F719D0 /* ShikimoriTracker.swift in Sources */,
 				FB252DA62E8B00E60052BA68 /* ChapterTitleDisplayMode.swift in Sources */,
 				FBD6A41A285B8EBC007116C9 /* TrackState.swift in Sources */,
