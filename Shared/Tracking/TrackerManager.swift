@@ -136,6 +136,15 @@ actor TrackerManager {
                 }
             }
 
+            // apply per-title chapter offset (auto-update path only; never manual)
+            if item.offset != 0, let chapter = update.lastReadChapter {
+                update.lastReadChapter = Self.applyChapterOffset(
+                    chapter,
+                    offset: item.offset,
+                    totalChapters: state.totalChapters
+                )
+            }
+
             // update reading state
             let readLastChapter = if
                 chapterNum != nil,
