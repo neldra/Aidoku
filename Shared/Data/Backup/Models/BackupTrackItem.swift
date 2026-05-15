@@ -13,6 +13,23 @@ struct BackupTrackItem: Codable, Hashable {
     var mangaId: String
     var sourceId: String
     var title: String?
+    var offset: Int
+
+    init(
+        id: String,
+        trackerId: String,
+        mangaId: String,
+        sourceId: String,
+        title: String?,
+        offset: Int = 0
+    ) {
+        self.id = id
+        self.trackerId = trackerId
+        self.mangaId = mangaId
+        self.sourceId = sourceId
+        self.title = title
+        self.offset = offset
+    }
 
     init(trackObject: TrackObject) {
         id = trackObject.id ?? ""
@@ -20,6 +37,17 @@ struct BackupTrackItem: Codable, Hashable {
         mangaId = trackObject.mangaId ?? ""
         sourceId = trackObject.sourceId ?? ""
         title = trackObject.title
+        offset = Int(trackObject.offset)
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        trackerId = try c.decode(String.self, forKey: .trackerId)
+        mangaId = try c.decode(String.self, forKey: .mangaId)
+        sourceId = try c.decode(String.self, forKey: .sourceId)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        offset = try c.decodeIfPresent(Int.self, forKey: .offset) ?? 0
     }
 
     func toObject(context: NSManagedObjectContext? = nil) -> TrackObject {
@@ -34,6 +62,7 @@ struct BackupTrackItem: Codable, Hashable {
         obj.mangaId = mangaId
         obj.sourceId = sourceId
         obj.title = title
+        obj.offset = Int32(offset)
         return obj
     }
 }
