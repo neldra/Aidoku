@@ -184,6 +184,7 @@
 		FB2E024E286606FC00786F21 /* JsonAnyValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2E024C286606FC00786F21 /* JsonAnyValue.swift */; };
 		FB2E02502868A51C00786F21 /* TrackerModalViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2E024F2868A51C00786F21 /* TrackerModalViewController.swift */; };
 		FB2E02522868A67500786F21 /* TrackerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2E02512868A67500786F21 /* TrackerView.swift */; };
+		FB0AB89A0853103100AF1459 /* TrackerOffsetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0AB8990853103100AF1458 /* TrackerOffsetView.swift */; };
 		FB2E02542868B3D900786F21 /* TrackerSettingOptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2E02532868B3D900786F21 /* TrackerSettingOptionView.swift */; };
 		FB30958829CB3EEF00EF2B0A /* ReaderTransitionNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB30958729CB3EEF00EF2B0A /* ReaderTransitionNode.swift */; };
 		FB30D582296CC0FE006B03A7 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB30D581296CC0FE006B03A7 /* HistoryManager.swift */; };
@@ -735,6 +736,7 @@
 		FB2E024C286606FC00786F21 /* JsonAnyValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JsonAnyValue.swift; sourceTree = "<group>"; };
 		FB2E024F2868A51C00786F21 /* TrackerModalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerModalViewController.swift; sourceTree = "<group>"; };
 		FB2E02512868A67500786F21 /* TrackerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerView.swift; sourceTree = "<group>"; };
+		FB0AB8990853103100AF1458 /* TrackerOffsetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerOffsetView.swift; sourceTree = "<group>"; };
 		FB2E02532868B3D900786F21 /* TrackerSettingOptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerSettingOptionView.swift; sourceTree = "<group>"; };
 		FB30958729CB3EEF00EF2B0A /* ReaderTransitionNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTransitionNode.swift; sourceTree = "<group>"; };
 		FB30D581296CC0FE006B03A7 /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
@@ -1574,6 +1576,7 @@
 				FBE88BEF2886FC5800A61122 /* TrackerListView.swift */,
 				FBCA1B1F288896EB007149C5 /* TrackerAddView.swift */,
 				FB2E02512868A67500786F21 /* TrackerView.swift */,
+				FB0AB8990853103100AF1458 /* TrackerOffsetView.swift */,
 				FB548C9A2F4CF07600F046A8 /* TrackerUnavailableItemView.swift */,
 				FB2E02532868B3D900786F21 /* TrackerSettingOptionView.swift */,
 				FBBE0FCF2886F69500D7C63F /* TrackerSettingOptionViewCoordinator.swift */,
@@ -2786,6 +2789,7 @@
 				FB67EE6327F3D2E300C468EA /* WasmAidoku.swift in Sources */,
 				FB4E579B2E352CAB006EF27C /* UIKeyModifierFlags.swift in Sources */,
 				FB2E02522868A67500786F21 /* TrackerView.swift in Sources */,
+				FB0AB89A0853103100AF1459 /* TrackerOffsetView.swift in Sources */,
 				FB261ED32ECA63DB00743F56 /* KeyboardOffsetDetector.swift in Sources */,
 				FB99591E2F6863A700B632D5 /* ReaderTextView.swift in Sources */,
 				FB4B0AE8285D0A0E0066A13B /* Dictionary.swift in Sources */,
