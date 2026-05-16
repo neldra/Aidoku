@@ -711,6 +711,10 @@
 "MIGRATE_SOURCES" = "Migrate Sources";
 "START_MATCHING" = "Start Matching";
 "SYNC_LOCAL_HISTORY" = "Sync Local History";
+"SET_CHAPTER_OFFSET" = "Set Offset…";
+"CHAPTER_OFFSET" = "Chapter Offset";
+"CHAPTER_OFFSET_INFO" = "Added to the chapter number when a tracker syncs automatically after you read. Use it when a source counts afterwords or skips bonus chapters. Manual edits are not affected.";
+"OFFSET" = "Offset";
 "MIGRATE" = "Migrate";
 "MIGRATION" = "Migration";
 "OPTIONS" = "Options";
