@@ -245,6 +245,7 @@ struct TrackerView: View {
         }
         .sheet(isPresented: $showOffsetSheet) {
             let view = TrackerOffsetView(offset: $offset) { newOffset in
+                guard newOffset != item.offset else { return }
                 Task {
                     await TrackerManager.shared.setOffset(item: item, offset: newOffset)
                 }
