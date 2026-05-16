@@ -244,16 +244,11 @@ struct TrackerView: View {
             SafariView(url: $safariUrl)
         }
         .sheet(isPresented: $showOffsetSheet) {
-            let view = TrackerOffsetView(offset: $offset) { newOffset in
+            TrackerOffsetView(offset: $offset) { newOffset in
                 guard newOffset != item.offset else { return }
                 Task {
                     await TrackerManager.shared.setOffset(item: item, offset: newOffset)
                 }
-            }
-            if #available(iOS 16.0, *) {
-                view.presentationDetents([.medium])
-            } else {
-                view
             }
         }
     }
