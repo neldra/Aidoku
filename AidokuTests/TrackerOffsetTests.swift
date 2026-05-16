@@ -59,4 +59,11 @@ import Testing
         let decoded = try JSONDecoder().decode(BackupTrackItem.self, from: data)
         #expect(decoded.offset == -3)
     }
+
+    @Test func backupClampsOverflowingOffsetOnRestore() throws {
+        let huge = #"{"id":"a","trackerId":"al","mangaId":"m","sourceId":"s","title":"T","offset":99999999999}"#
+        let decoded = try JSONDecoder().decode(BackupTrackItem.self, from: Data(huge.utf8))
+        // toObject must not trap; clamped to Int32 range
+        #expect(decoded.toObject().offset == Int32.max)
+    }
 }

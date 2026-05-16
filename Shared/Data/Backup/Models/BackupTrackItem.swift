@@ -41,13 +41,13 @@ struct BackupTrackItem: Codable, Hashable {
     }
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        trackerId = try c.decode(String.self, forKey: .trackerId)
-        mangaId = try c.decode(String.self, forKey: .mangaId)
-        sourceId = try c.decode(String.self, forKey: .sourceId)
-        title = try c.decodeIfPresent(String.self, forKey: .title)
-        offset = try c.decodeIfPresent(Int.self, forKey: .offset) ?? 0
+        let objectContainer = try decoder.container(keyedBy: CodingKeys.self)
+        id = try objectContainer.decode(String.self, forKey: .id)
+        trackerId = try objectContainer.decode(String.self, forKey: .trackerId)
+        mangaId = try objectContainer.decode(String.self, forKey: .mangaId)
+        sourceId = try objectContainer.decode(String.self, forKey: .sourceId)
+        title = try objectContainer.decodeIfPresent(String.self, forKey: .title)
+        offset = try objectContainer.decodeIfPresent(Int.self, forKey: .offset) ?? 0
     }
 
     func toObject(context: NSManagedObjectContext? = nil) -> TrackObject {
@@ -62,7 +62,16 @@ struct BackupTrackItem: Codable, Hashable {
         obj.mangaId = mangaId
         obj.sourceId = sourceId
         obj.title = title
-        obj.offset = Int32(offset)
+        obj.offset = Int32(clamping: offset)
         return obj
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case trackerId
+        case mangaId
+        case sourceId
+        case title
+        case offset
     }
 }
