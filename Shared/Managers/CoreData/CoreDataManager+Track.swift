@@ -119,4 +119,21 @@ extension CoreDataManager {
             context.delete(object)
         }
     }
+
+    /// Sets the chapter offset for a tracked title.
+    func setTrackOffset(
+        trackerId: String,
+        sourceId: String,
+        mangaId: String,
+        offset: Int,
+        context: NSManagedObjectContext? = nil
+    ) {
+        guard let object = getTrack(
+            trackerId: trackerId,
+            sourceId: sourceId,
+            mangaId: mangaId,
+            context: context
+        ) else { return }
+        object.offset = Int32(clamping: offset)
+    }
 }

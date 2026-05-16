@@ -299,6 +299,25 @@ actor TrackerManager {
         NotificationCenter.default.post(name: .updateTrackers, object: nil)
     }
 
+    /// Persists the chapter offset for a tracked title.
+    func setOffset(item: TrackItem, offset: Int) async {
+        await CoreDataManager.shared.container.performBackgroundTask { @Sendable context in
+            CoreDataManager.shared.setTrackOffset(
+                trackerId: item.trackerId,
+                sourceId: item.sourceId,
+                mangaId: item.mangaId,
+                offset: offset,
+                context: context
+            )
+            do {
+                try context.save()
+            } catch {
+                LogManager.logger.error("TrackManager.setOffset(item:offset:): \(error)")
+            }
+        }
+        NotificationCenter.default.post(name: .updateTrackers, object: nil)
+    }
+
     /// Checks if a manga is being tracked
     @MainActor
     func isTracking(sourceId: String, mangaId: String) -> Bool {
