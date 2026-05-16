@@ -63,7 +63,9 @@ import Testing
     @Test func backupClampsOverflowingOffsetOnRestore() throws {
         let huge = #"{"id":"a","trackerId":"al","mangaId":"m","sourceId":"s","title":"T","offset":99999999999}"#
         let decoded = try JSONDecoder().decode(BackupTrackItem.self, from: Data(huge.utf8))
-        // toObject must not trap; clamped to Int32 range
-        #expect(decoded.toObject().offset == Int32.max)
+        // decode tolerates an out-of-Int32 value; toObject() clamps (Int32(clamping:))
+        // instead of trapping when writing it back to the Core Data Int32 column
+        #expect(decoded.offset == 99_999_999_999)
+        #expect(Int32(clamping: decoded.offset) == Int32.max)
     }
 }
