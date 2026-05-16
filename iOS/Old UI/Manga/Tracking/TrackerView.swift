@@ -31,6 +31,9 @@ struct TrackerView: View {
     @State var safariUrl: URL?
     @State var showSafari = false
 
+    @State var offset = 0
+    @State var showOffsetSheet = false
+
     var body: some View {
         VStack {
             HStack {
@@ -75,6 +78,21 @@ struct TrackerView: View {
                         Label(
                             NSLocalizedString("SYNC_LOCAL_HISTORY", comment: ""),
                             systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+                    Menu {
+                        Button {
+                            showOffsetSheet = true
+                        } label: {
+                            Label(
+                                NSLocalizedString("SET_CHAPTER_OFFSET", comment: ""),
+                                systemImage: "plusminus"
+                            )
+                        }
+                    } label: {
+                        Label(
+                            NSLocalizedString("ADVANCED", comment: ""),
+                            systemImage: "gearshape"
                         )
                     }
                 } label: {
@@ -174,6 +192,7 @@ struct TrackerView: View {
         }
         // fetch latest tracker state
         .task {
+            offset = item.offset
             state = try? await tracker.getState(trackId: item.id)
             guard let state else { return }
 
@@ -223,6 +242,18 @@ struct TrackerView: View {
         }
         .sheet(isPresented: $showSafari) {
             SafariView(url: $safariUrl)
+        }
+        .sheet(isPresented: $showOffsetSheet) {
+            let view = TrackerOffsetView(offset: $offset) { newOffset in
+                Task {
+                    await TrackerManager.shared.setOffset(item: item, offset: newOffset)
+                }
+            }
+            if #available(iOS 16.0, *) {
+                view.presentationDetents([.medium])
+            } else {
+                view
+            }
         }
     }
 }
