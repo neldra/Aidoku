@@ -21,13 +21,23 @@ struct TTSQueue {
     }
     var isAtEnd: Bool { index >= paragraphs.count - 1 }
 
+    /// Absolute index of the first paragraph of the chapter `current` is in.
+    var firstIndexOfCurrentChapter: Int {
+        guard let key = current?.chapterKey else { return 0 }
+        return paragraphs.firstIndex { $0.chapterKey == key } ?? 0
+    }
+
+    /// Absolute index of the last paragraph of the chapter `current` is in.
+    var lastIndexOfCurrentChapter: Int {
+        guard let key = current?.chapterKey else { return max(0, count - 1) }
+        return paragraphs.lastIndex { $0.chapterKey == key } ?? max(0, count - 1)
+    }
+
     /// Index of the current paragraph *within its own chapter* (0-based).
     /// The reader renders one chapter at a time numbered from 0, so highlight
     /// matching must use this, not the global queue index.
     var localIndexInCurrentChapter: Int {
-        guard let key = current?.chapterKey else { return 0 }
-        let firstOfChapter = paragraphs.firstIndex { $0.chapterKey == key } ?? 0
-        return index - firstOfChapter
+        index - firstIndexOfCurrentChapter
     }
     var progress: Double {
         guard paragraphs.count > 1 else { return paragraphs.isEmpty ? 0 : 1 }

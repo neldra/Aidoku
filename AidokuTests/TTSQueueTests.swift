@@ -98,4 +98,38 @@ import Testing
         #expect(q.advance() == nil)           // clamped at end, no overflow
         #expect(q.index == 3)
     }
+
+    @Test("current-chapter bounds are correct across a multi-chapter (appended) queue")
+    func currentChapterBounds() {
+        var q = TTSQueue(
+            paragraphs: TTSText.paragraphs(chapterKey: "c1", text: "A\n\nB\n\nC"),
+            startIndex: 0
+        )
+        q.appendChapter(TTSText.paragraphs(chapterKey: "c2", text: "X\n\nY"))
+        #expect(q.count == 5)
+        #expect(q.firstIndexOfCurrentChapter == 0)
+        #expect(q.lastIndexOfCurrentChapter == 2)
+        q.seek(to: 2)
+        #expect(q.firstIndexOfCurrentChapter == 0)
+        #expect(q.lastIndexOfCurrentChapter == 2)
+        q.seek(to: 3)
+        #expect(q.firstIndexOfCurrentChapter == 3)
+        #expect(q.lastIndexOfCurrentChapter == 4)
+        #expect(q.localIndexInCurrentChapter == 0)
+        q.seek(to: 4)
+        #expect(q.localIndexInCurrentChapter == 1)
+    }
+
+    @Test("current-chapter bounds: single-chapter and empty queues don't crash")
+    func currentChapterBoundsEdges() {
+        var q = TTSQueue(
+            paragraphs: TTSText.paragraphs(chapterKey: "c1", text: "A\n\nB"),
+            startIndex: 0
+        )
+        #expect(q.firstIndexOfCurrentChapter == 0)
+        #expect(q.lastIndexOfCurrentChapter == q.count - 1)
+        let empty = TTSQueue(paragraphs: [], startIndex: 0)
+        #expect(empty.firstIndexOfCurrentChapter == 0)
+        #expect(empty.lastIndexOfCurrentChapter == 0)
+    }
 }
