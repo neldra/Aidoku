@@ -900,7 +900,7 @@ extension ReaderTextViewController: TTSChapterProvider {
     var nearestParagraphIndex: Int {
         guard let sectionIndex = currentSectionIndex else { return 0 }
         let section = sections[sectionIndex]
-        guard let text = section.pages.first?.text else { return 0 }
+        guard let text = section.pages.first?.resolvedText() else { return 0 }
         let paragraphCount = TTSText.splitParagraphs(text).count
         guard paragraphCount > 0 else { return 0 }
         let startY = sectionContentStartY(at: sectionIndex)
@@ -914,7 +914,7 @@ extension ReaderTextViewController: TTSChapterProvider {
     var currentChapterText: (key: String, text: String)? {
         guard let sectionIndex = currentSectionIndex else { return nil }
         let section = sections[sectionIndex]
-        guard let text = section.pages.first?.text else { return nil }
+        guard let text = section.pages.first?.resolvedText() else { return nil }
         return (section.chapter.key, text)
     }
 
@@ -939,7 +939,7 @@ extension ReaderTextViewController: TTSChapterProvider {
         // appendNextChapter could otherwise feed the wrong chapter's text.
         guard viewModel.preloadedChapter == nextCh else { return nil }
         let pages = viewModel.preloadedPages
-        guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.text else {
+        guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.resolvedText() else {
             return nil
         }
         return (nextCh.key, text)
@@ -962,7 +962,7 @@ extension ReaderTextViewController: TTSChapterProvider {
         else { return }
         let startY = sectionContentStartY(at: sectionIndex)
         let height = sectionContentHeight(at: sectionIndex)
-        let count = max(1, TTSText.splitParagraphs(sections[sectionIndex].pages.first?.text ?? "").count)
+        let count = max(1, TTSText.splitParagraphs(sections[sectionIndex].pages.first?.resolvedText() ?? "").count)
         let paragraphTop = startY + height * (CGFloat(index) / CGFloat(count))
         let target = paragraphTop - scrollView.frame.height / 3
         let maxOffset = max(0, scrollView.contentSize.height - scrollView.frame.height)

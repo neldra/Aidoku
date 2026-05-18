@@ -7,6 +7,7 @@
 
 import Foundation
 import AidokuRunner
+import ZIPFoundation
 
 struct Page: Hashable {
 
@@ -41,6 +42,25 @@ struct Page: Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(chapterId)
         hasher.combine(index)
+    }
+}
+
+extension Page {
+    /// The page's text whether delivered inline (`text`) or as a `.txt`
+    /// entry inside a downloaded chapter's zip (`zipURL` + `imageURL`).
+    func resolvedText() -> String? {
+        if let text { return text }
+        guard
+            let zipURL = zipURL.flatMap({ URL(string: $0) }),
+            let filePath = imageURL
+        else { return nil }
+        do {
+            var data = Data()
+            let archive = try Archive(url: zipURL, accessMode: .read)
+            guard let entry = archive[filePath] else { return nil }
+            _ = try archive.extract(entry, consumer: { data.append($0) })
+            return String(data: data, encoding: .utf8)
+        } catch { return nil }
     }
 }
 

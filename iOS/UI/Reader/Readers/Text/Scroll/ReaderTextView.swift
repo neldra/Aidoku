@@ -35,29 +35,7 @@ struct ReaderTextView: View {
         self.horizontalPadding = horizontalPadding
         self.chapterKey = page?.chapterId ?? ""
 
-        func loadText(page: Page) -> String? {
-            if let text = page.text {
-                return text
-            }
-            guard
-                let zipURL = page.zipURL.flatMap({ URL(string: $0) }),
-                let filePath = page.imageURL
-            else {
-                return nil
-            }
-            do {
-                var data = Data()
-                let archive = try Archive(url: zipURL, accessMode: .read)
-                guard let entry = archive[filePath] else {
-                    return nil
-                }
-                _ = try archive.extract(entry, consumer: { data.append($0) })
-                return String(data: data, encoding: .utf8)
-            } catch {
-                return nil
-            }
-        }
-        self.text = page.flatMap(loadText)
+        self.text = page?.resolvedText()
     }
 
     private var paragraphs: [TTSParagraph] {
