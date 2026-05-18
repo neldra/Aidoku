@@ -9,6 +9,13 @@ import AidokuRunner
 import SwiftUI
 import ZIPFoundation
 
+struct TTSParagraphFramesKey: PreferenceKey {
+    static var defaultValue: [Int: CGRect] { [:] }
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 struct ReaderTextView: View {
     let source: AidokuRunner.Source?
     let text: String?
@@ -17,6 +24,7 @@ struct ReaderTextView: View {
     let fontSize: Double
     let lineSpacing: Double
     let horizontalPadding: Double
+    var onParagraphFrames: (([Int: CGRect]) -> Void)?
 
     @ObservedObject private var tts = TTSManager.shared
 
@@ -26,7 +34,8 @@ struct ReaderTextView: View {
         fontFamily: String,
         fontSize: Double,
         lineSpacing: Double,
-        horizontalPadding: Double
+        horizontalPadding: Double,
+        onParagraphFrames: (([Int: CGRect]) -> Void)? = nil
     ) {
         self.source = source
         self.fontFamily = fontFamily
@@ -34,6 +43,7 @@ struct ReaderTextView: View {
         self.lineSpacing = lineSpacing
         self.horizontalPadding = horizontalPadding
         self.chapterKey = page?.chapterId ?? ""
+        self.onParagraphFrames = onParagraphFrames
 
         self.text = page?.resolvedText()
     }
@@ -72,9 +82,19 @@ struct ReaderTextView: View {
                                   ? Color.accentColor.opacity(0.16)
                                   : Color.clear)
                     )
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: TTSParagraphFramesKey.self,
+                                value: [paragraph.id: geo.frame(in: .named("ttsReaderContent"))]
+                            )
+                        }
+                    )
                     .animation(.easeInOut(duration: 0.2), value: isHighlighted(paragraph))
                 }
             }
+            .coordinateSpace(name: "ttsReaderContent")
+            .onPreferenceChange(TTSParagraphFramesKey.self) { onParagraphFrames?($0) }
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical)
             .frame(maxWidth: .infinity, alignment: .leading)
