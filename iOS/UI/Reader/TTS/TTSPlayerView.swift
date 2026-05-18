@@ -15,6 +15,7 @@ struct TTSPlayerView: View {
     let coverImage: UIImage?
 
     @AppStorage(TTSManager.highlightKey) private var highlightEnabled = true
+    @State private var draftRate: Float?
 
     private var voices: [AVSpeechSynthesisVoice] {
         AVSpeechSynthesisVoice.speechVoices()
@@ -107,12 +108,24 @@ struct TTSPlayerView: View {
                 HStack {
                     Text("Speed")
                     Spacer()
-                    Text(String(format: "%.1fx", tts.rate / AVSpeechUtteranceDefaultSpeechRate))
+                    Text(String(format: "%.1fx",
+                                (draftRate ?? tts.rate) / AVSpeechUtteranceDefaultSpeechRate))
                         .foregroundColor(.secondary)
                 }
                 Slider(
-                    value: $tts.rate,
-                    in: (AVSpeechUtteranceDefaultSpeechRate * 0.5)...(AVSpeechUtteranceDefaultSpeechRate * 2.0)
+                    value: Binding(
+                        get: { draftRate ?? tts.rate },
+                        set: { draftRate = $0 }
+                    ),
+                    in: (AVSpeechUtteranceDefaultSpeechRate * 0.5)...(AVSpeechUtteranceDefaultSpeechRate * 2.0),
+                    onEditingChanged: { editing in
+                        if !editing {
+                            if let rate = draftRate {
+                                tts.rate = rate
+                            }
+                            draftRate = nil
+                        }
+                    }
                 )
                 .tint(.accentColor)
             }
