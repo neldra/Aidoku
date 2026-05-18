@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Combine
 import SafariServices
 import SwiftUI
 import AidokuRunner
@@ -51,6 +52,12 @@ class ReaderViewController: BaseObservingViewController {
     private lazy var activityIndicator = UIActivityIndicatorView(style: .medium)
     private lazy var toolbarView = ReaderToolbarView()
     private var toolbarViewWidthConstraint: NSLayoutConstraint?
+
+    private var ttsBarButton: UIBarButtonItem?
+    private var ttsMiniPlayerController: UIHostingController<TTSMiniPlayerView>?
+    private var ttsMiniPlayerBottomConstraint: NSLayoutConstraint?
+    private var ttsObserver: NSObjectProtocol?
+    private var ttsDeactivationCancellable: AnyCancellable?
 
     private var squeezeTimer: Timer?
     private var longSqueezeTimer: Timer?
@@ -124,6 +131,10 @@ class ReaderViewController: BaseObservingViewController {
         super.init()
     }
 
+    deinit {
+        if let ttsObserver { NotificationCenter.default.removeObserver(ttsObserver) }
+    }
+
     override func configure() {
         node.backgroundColor = .systemBackground
         navigationController?.navigationBar.prefersLargeTitles = false
@@ -149,6 +160,13 @@ class ReaderViewController: BaseObservingViewController {
             action: #selector(openWebView)
         )
         moreButton.isEnabled = chapter.url != nil
+        ttsBarButton = UIBarButtonItem(
+            image: UIImage(systemName: "headphones"),
+            style: .plain,
+            target: self,
+            action: #selector(toggleTTS)
+        )
+        ttsBarButton?.isEnabled = false
         navigationItem.rightBarButtonItems = [
             moreButton,
             UIBarButtonItem(
@@ -156,7 +174,8 @@ class ReaderViewController: BaseObservingViewController {
                 style: .plain,
                 target: self,
                 action: #selector(openReaderSettings)
-            )
+            ),
+            ttsBarButton!
         ]
 
         // fix navbar being clear
@@ -539,6 +558,7 @@ class ReaderViewController: BaseObservingViewController {
     }
 
     @objc func close() {
+        TTSManager.shared.stop()
         dismiss(animated: true)
     }
 
@@ -652,6 +672,7 @@ extension ReaderViewController {
         }
         reader?.readingMode = readingMode
         disableSwipeGestures()
+        ttsBarButton?.isEnabled = reader is ReaderTextViewController
     }
 }
 
@@ -1216,5 +1237,83 @@ extension ReaderViewController {
             reader?.setChapter(previousChaoter, startPage: 1)
             setChapter(previousChaoter)
         }
+    }
+}
+
+// MARK: - TTS
+
+extension ReaderViewController {
+    @objc func toggleTTS() {
+        guard let textReader = reader as? ReaderTextViewController else { return }
+        if TTSManager.shared.isActive {
+            presentTTSSheet()
+            return
+        }
+        guard let (key, text) = textReader.currentChapterText else { return }
+        TTSManager.shared.start(
+            provider: textReader,
+            chapterKey: key,
+            text: text,
+            startIndex: textReader.nearestParagraphIndex
+        )
+        showTTSMiniPlayer()
+    }
+
+    private func presentTTSSheet() {
+        let view = TTSPlayerView(
+            novelTitle: manga.title,
+            chapterTitle: chapter.title ?? (chapter.chapterNumber.map { "Chapter \(String(format: "%g", Double($0)))" } ?? ""),
+            coverImage: nil
+        )
+        let vc = UIHostingController(rootView: view)
+        if let sheet = vc.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(vc, animated: true)
+    }
+
+    private func showTTSMiniPlayer() {
+        guard ttsMiniPlayerController == nil else { return }
+        let view = TTSMiniPlayerView(
+            title: manga.title,
+            subtitle: chapter.title ?? "",
+            onTapExpand: { [weak self] in self?.presentTTSSheet() }
+        )
+        let host = UIHostingController(rootView: view)
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        self.view.addSubview(host.view)
+        host.didMove(toParent: self)
+        let bottom = host.view.bottomAnchor.constraint(
+            equalTo: self.view.safeAreaLayoutGuide.bottomAnchor,
+            constant: -52
+        )
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+            bottom
+        ])
+        ttsMiniPlayerController = host
+        ttsMiniPlayerBottomConstraint = bottom
+
+        ttsObserver = NotificationCenter.default.addObserver(
+            forName: nil, object: TTSManager.shared, queue: .main
+        ) { _ in } // placeholder; SwiftUI @ObservedObject drives updates
+
+        // Hide the mini-player when TTS deactivates.
+        ttsDeactivationCancellable = TTSManager.shared.$isActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active in
+                if !active { self?.hideTTSMiniPlayer() }
+            }
+    }
+
+    private func hideTTSMiniPlayer() {
+        ttsMiniPlayerController?.willMove(toParent: nil)
+        ttsMiniPlayerController?.view.removeFromSuperview()
+        ttsMiniPlayerController?.removeFromParent()
+        ttsMiniPlayerController = nil
     }
 }
