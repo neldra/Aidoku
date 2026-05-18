@@ -19,6 +19,8 @@ protocol TTSChapterProvider: AnyObject {
     var ttsArtwork: UIImage? { get }
     /// Load the next *text* chapter's paragraphs, or nil if none / not text.
     func ttsLoadNextChapter() async -> (chapterKey: String, text: String)?
+    /// Load the previous *text* chapter's paragraphs, or nil if none / not text.
+    func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)?
     /// The reader should highlight (and, if enabled, scroll to) this paragraph.
     /// `localIndex` is 0-based *within `chapterKey`* (the reader renders one
     /// chapter at a time, numbered from 0).
@@ -57,6 +59,7 @@ final class TTSManager: NSObject, ObservableObject {
     private var queue = TTSQueue(paragraphs: [])
     private weak var provider: TTSChapterProvider?
     private var loadingNext = false
+    private var loadingChapterNav = false
 
     var progress: Double { queue.progress }
     var currentChapterKey: String? { queue.current?.chapterKey }
@@ -257,6 +260,42 @@ final class TTSManager: NSObject, ObservableObject {
             } else {
                 self.isPlaying = false
             }
+        }
+    }
+
+    /// Lock-screen / remote "next track" = jump to the next chapter boundary.
+    func skipToNextChapter() {
+        // Reuse the natural end-of-chapter path: jump to the last paragraph
+        // of the current chapter, then let finish-handling load and roll
+        // into the next chapter.
+        queue.seek(to: max(0, queue.count - 1))
+        handleUtteranceFinished()
+    }
+
+    /// Lock-screen / remote "previous track" = restart current chapter, or
+    /// (if already at the chapter's first paragraph) load the previous one.
+    func skipToPreviousChapter() {
+        if queue.localIndexInCurrentChapter == 0 {
+            loadPreviousChapter()
+        } else {
+            resetChapter()
+            updateNowPlaying()
+        }
+    }
+
+    private func loadPreviousChapter() {
+        guard !loadingChapterNav else { return }
+        loadingChapterNav = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.loadingChapterNav = false }
+            guard let prev = await self.provider?.ttsLoadPreviousChapter() else { return }
+            let paras = TTSText.paragraphs(chapterKey: prev.chapterKey, text: prev.text)
+            guard !paras.isEmpty else { return }
+            self.queue = TTSQueue(paragraphs: paras, startIndex: 0)
+            self.paragraphCount = self.queue.count
+            self.speakCurrent()
+            self.updateNowPlaying()
         }
     }
 }
