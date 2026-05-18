@@ -651,8 +651,30 @@ extension ReaderTextViewController {
                 updateBoundaryTransitionViews()
                 view.layoutIfNeeded()
 
+                if TTSManager.shared.isActive,
+                   let k = TTSManager.shared.currentChapterKey {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.ttsActiveParagraphChanged(Notification(
+                            name: .ttsActiveParagraph, object: nil,
+                            userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                                       "chapterKey": k]
+                        ))
+                    }
+                }
+
                 loadingNext = false
             }
+        }
+    }
+
+    /// Make sure `key`'s chapter is appended/rendered so TTS highlight/scroll
+    /// can target it. Reuses the infinite-scroll append path.
+    private func ensureChapterRendered(key: String) {
+        guard !sections.contains(where: { $0.chapter.key == key }) else { return }
+        // The TTS queue only rolls forward into `nextChapter`; that is
+        // exactly what appendNextChapter() renders.
+        if nextChapter?.key == key {
+            appendNextChapter()
         }
     }
 
@@ -1008,7 +1030,13 @@ extension ReaderTextViewController: TTSChapterProvider {
         guard
             UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true,
             let index = note.userInfo?["index"] as? Int,
-            let chapterKey = note.userInfo?["chapterKey"] as? String,
+            let chapterKey = note.userInfo?["chapterKey"] as? String
+        else { return }
+        if !sections.contains(where: { $0.chapter.key == chapterKey }) {
+            ensureChapterRendered(key: chapterKey)
+            return
+        }
+        guard
             let sectionIndex = sections.firstIndex(where: { $0.chapter.key == chapterKey }),
             let frame = ttsParagraphFrames[chapterKey]?[index]
         else { return }
