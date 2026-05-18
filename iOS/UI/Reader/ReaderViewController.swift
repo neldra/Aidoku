@@ -359,6 +359,16 @@ class ReaderViewController: BaseObservingViewController {
         }
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+
+        if isBeingDismissed
+            || isMovingFromParent
+            || (navigationController?.isBeingDismissed ?? false) {
+            TTSManager.shared.stop()
+        }
+    }
+
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
 
@@ -1241,6 +1251,8 @@ extension ReaderViewController {
     @objc func toggleTTS() {
         guard let textReader = reader as? ReaderTextViewController else { return }
         if TTSManager.shared.isActive {
+            TTSManager.shared.reattach(provider: textReader)
+            showTTSMiniPlayer()
             presentTTSSheet()
             return
         }
