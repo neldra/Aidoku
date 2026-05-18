@@ -217,6 +217,35 @@ final class TTSManager: NSObject, ObservableObject {
         speakCurrent()
     }
 
+    // MARK: - Reader session binding
+
+    /// Re-point a live session at a reader instance and immediately re-emit
+    /// the active paragraph so highlight/scroll catches up after recreation.
+    func reattach(provider: TTSChapterProvider) {
+        guard isActive else { return }
+        self.provider = provider
+        syncReaderToCursor()
+    }
+
+    /// Unbind only the provider that is currently attached. This prevents a
+    /// stale reader teardown from detaching a newer reader instance.
+    func detach(provider: TTSChapterProvider) {
+        if self.provider === provider {
+            self.provider = nil
+        }
+    }
+
+    /// Re-emit the active paragraph callback for the queue's current cursor.
+    func syncReaderToCursor() {
+        guard isActive, let paragraph = queue.current else { return }
+        currentParagraphIndex = queue.index
+        currentLocalIndex = queue.localIndexInCurrentChapter
+        provider?.ttsDidActivateParagraph(
+            localIndex: queue.localIndexInCurrentChapter,
+            chapterKey: paragraph.chapterKey
+        )
+    }
+
     private func speakCurrent() {
         guard let paragraph = queue.current else { return }
         synthesizer.stopSpeakingNow()
@@ -297,6 +326,18 @@ final class TTSManager: NSObject, ObservableObject {
             self.speakCurrent()
             self.updateNowPlaying()
         }
+    }
+
+    /// User-driven reader navigation is authoritative. When the visible
+    /// reader moves to a new text chapter during a live session, rebuild the
+    /// queue and narrate that chapter from the top.
+    func userDidNavigate(toChapterKey chapterKey: String, text: String) {
+        guard isActive else { return }
+        let paragraphs = TTSText.paragraphs(chapterKey: chapterKey, text: text)
+        guard !paragraphs.isEmpty else { return }
+        queue = TTSQueue(paragraphs: paragraphs, startIndex: 0)
+        paragraphCount = queue.count
+        speakCurrent()
     }
 }
 

@@ -92,4 +92,68 @@ private final class StubProvider: TTSChapterProvider {
         manager.skipBackward()
         #expect(manager.currentParagraphIndex == 0)
     }
+
+    @Test("reattach re-points provider and re-emits the active paragraph")
+    func reattachReSyncs() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let first = StubProvider()
+        manager.start(provider: first, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 0)
+        manager.skipForward()
+        let second = StubProvider()
+        manager.reattach(provider: second)
+        #expect(second.activated == [1])
+        #expect(manager.isActive)
+    }
+
+    @Test("reattach is a no-op when no session is active")
+    func reattachInactive() {
+        let manager = TTSManager(synthesizer: MockSynth())
+        let provider = StubProvider()
+        manager.reattach(provider: provider)
+        #expect(provider.activated.isEmpty)
+        #expect(manager.isActive == false)
+    }
+
+    @Test("detach unbinds only the matching provider")
+    func detachIdentity() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let first = StubProvider()
+        manager.start(provider: first, chapterKey: "c1",
+                      text: "A\n\nB\n\nC\n\nD", startIndex: 0)
+        manager.skipForward()
+        let other = StubProvider()
+        manager.detach(provider: other)
+        manager.skipForward()
+        #expect(first.activated == [0, 1, 2])
+        manager.detach(provider: first)
+        manager.skipForward()
+        #expect(first.activated == [0, 1, 2])
+    }
+
+    @Test("userDidNavigate retargets the queue to the new chapter from the top")
+    func navRetargets() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 2)
+        #expect(synth.spoken == ["C"])
+        manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
+        #expect(manager.currentChapterKey == "c5")
+        #expect(manager.currentParagraphIndex == 0)
+        #expect(synth.spoken == ["C", "X"])
+        #expect(provider.activated == [2, 0])
+    }
+
+    @Test("userDidNavigate is a no-op when no session is active")
+    func navInactive() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
+        #expect(synth.spoken.isEmpty)
+        #expect(manager.isActive == false)
+    }
 }
