@@ -39,6 +39,8 @@
 		FB0051262FAF0574004B4A6F /* MigrateResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0051252FAF056E004B4A6F /* MigrateResultsView.swift */; };
 		FB0051282FB7F926004B4A6F /* MigrateSingleSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0051272FB7F91E004B4A6F /* MigrateSingleSearchView.swift */; };
 		FB0051422FB970FF004B4A6F /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0051412FB970FD004B4A6F /* SafariView.swift */; };
+		8D1A4A75BA0AC41852EDF369 /* TTSText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8442497880F1DE904C7FF68C /* TTSText.swift */; };
+		8D8F491F92C6F060E9D73336 /* TTSQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9347BA9833359968D5B48F /* TTSQueue.swift */; };
 		FB02E1EB288CC1DA00B9E2DE /* LibraryViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1EA288CC1DA00B9E2DE /* LibraryViewController.swift */; };
 		FB02E1F2288D7BE900B9E2DE /* MangaGridCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1F1288D7BE900B9E2DE /* MangaGridCell.swift */; };
 		FB02E1F4288D7C0C00B9E2DE /* Manga.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1F3288D7C0C00B9E2DE /* Manga.swift */; };
@@ -624,6 +626,7 @@
 		7C63F0D62F48FD4B007D1811 /* TextSinglePageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSinglePageViewController.swift; sourceTree = "<group>"; };
 		7CF79D392F31E81300BF0800 /* ReaderPagedTextViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderPagedTextViewController.swift; sourceTree = "<group>"; };
 		7CF79D3A2F31E81300BF0800 /* TextPaginator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPaginator.swift; sourceTree = "<group>"; };
+		8442497880F1DE904C7FF68C /* TTSText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSText.swift; path = iOS/UI/Reader/TTS/TTSText.swift; sourceTree = SOURCE_ROOT; };
 		91D7BEF72DD7E46800898539 /* Aidoku-IOS.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Aidoku-IOS.xcconfig"; sourceTree = "<group>"; };
 		91D7BEF92DD7E48400898539 /* Aidoku-MACOS.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Aidoku-MACOS.xcconfig"; sourceTree = "<group>"; };
 		91D7BEFB2DD7E4BB00898539 /* Aidoku.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Aidoku.xcconfig; sourceTree = "<group>"; };
@@ -632,6 +635,7 @@
 		FB0051252FAF056E004B4A6F /* MigrateResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MigrateResultsView.swift; sourceTree = "<group>"; };
 		FB0051272FB7F91E004B4A6F /* MigrateSingleSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MigrateSingleSearchView.swift; sourceTree = "<group>"; };
 		FB0051412FB970FD004B4A6F /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
+		9B9347BA9833359968D5B48F /* TTSQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSQueue.swift; path = iOS/UI/Reader/TTS/TTSQueue.swift; sourceTree = SOURCE_ROOT; };
 		FB02E1EA288CC1DA00B9E2DE /* LibraryViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewController.swift; sourceTree = "<group>"; };
 		FB02E1F1288D7BE900B9E2DE /* MangaGridCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaGridCell.swift; sourceTree = "<group>"; };
 		FB02E1F3288D7C0C00B9E2DE /* Manga.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Manga.swift; sourceTree = "<group>"; };
@@ -1358,6 +1362,8 @@
 				FB1B4836277CE1920056D02C /* Products */,
 				FB1B4875277CE7FE0056D02C /* Frameworks */,
 				FB82E9632BF07649006A9314 /* Recovered References */,
+				8442497880F1DE904C7FF68C /* TTSText.swift */,
+				9B9347BA9833359968D5B48F /* TTSQueue.swift */,
 			);
 			indentWidth = 4;
 			sourceTree = "<group>";
@@ -2434,7 +2440,7 @@
 					};
 				};
 			};
-			buildConfigurationList = FB1B4829277CE18D0056D02C /* Build configuration list for PBXProject "Aidoku" */;
+			buildConfigurationList = FB1B4829277CE18D0056D02C /* Build configuration list for PBXProject "Aidoku (iOS)" */;
 			compatibilityVersion = "Xcode 13.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -2961,6 +2967,8 @@
 				FB79841D2E0DD183000761A9 /* TapZone.swift in Sources */,
 				FB58C6B22999B44D00A6F49F /* WebViewViewController.swift in Sources */,
 				FB72500F27CAAC6F0037F1C9 /* BackupManager.swift in Sources */,
+				8D1A4A75BA0AC41852EDF369 /* TTSText.swift in Sources */,
+				8D8F491F92C6F060E9D73336 /* TTSQueue.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3550,7 +3558,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		FB1B4829277CE18D0056D02C /* Build configuration list for PBXProject "Aidoku" */ = {
+		FB1B4829277CE18D0056D02C /* Build configuration list for PBXProject "Aidoku (iOS)" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				FB1B4848277CE1920056D02C /* Debug */,

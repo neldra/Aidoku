@@ -14,6 +14,9 @@
 # Other
 .DS_Store
 
+# pbxproj tooling venv
+.pbxproj-venv/
+
 # Zed
 .zed
 
