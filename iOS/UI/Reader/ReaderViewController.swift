@@ -1305,10 +1305,12 @@ extension ReaderViewController {
             UIView.layoutFittingCompressedSize
         ).height + self.view.safeAreaInsets.bottom
         (reader as? ReaderTextViewController)?.setTTSBottomReservation(stripHeight)
+        toolbarView.isHidden = true
     }
 
     private func hideTTSMiniPlayer() {
         (reader as? ReaderTextViewController)?.setTTSBottomReservation(0)
+        toolbarView.isHidden = false
         ttsMiniPlayerController?.willMove(toParent: nil)
         ttsMiniPlayerController?.view.removeFromSuperview()
         ttsMiniPlayerController?.removeFromParent()
