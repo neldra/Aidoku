@@ -165,6 +165,24 @@ class ReaderTextViewController: BaseViewController {
         }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        if TTSManager.shared.isActive {
+            TTSManager.shared.reattach(provider: self)
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+
+        if isBeingDismissed
+            || isMovingFromParent
+            || (navigationController?.isBeingDismissed ?? false) {
+            TTSManager.shared.detach(provider: self)
+        }
+    }
+
     // MARK: - Helpers
 
     private var sourceId: String {
@@ -173,6 +191,20 @@ class ReaderTextViewController: BaseViewController {
 
     private var mangaId: String {
         viewModel.manga.key
+    }
+
+    private func retargetTTSIfNeeded(
+        to chapter: AidokuRunner.Chapter,
+        pages: [Page],
+        force: Bool = false
+    ) {
+        guard TTSManager.shared.isActive else { return }
+        guard force || TTSManager.shared.currentChapterKey != chapter.key else { return }
+        if pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.resolvedText() {
+            TTSManager.shared.userDidNavigate(toChapterKey: chapter.key, text: text)
+        } else {
+            TTSManager.shared.stop()
+        }
     }
 
     /// Create a full-screen-height transition view to be placed between sections.
@@ -577,6 +609,8 @@ extension ReaderTextViewController {
                 scrollView.setContentOffset(.init(x: 0, y: prevHeight - safeTop), animated: false)
             }
 
+            retargetTTSIfNeeded(to: chapter, pages: viewModel.pages, force: true)
+
             isLoadingChapter = false
         }
     }
@@ -802,6 +836,7 @@ extension ReaderTextViewController {
 
         chapter = sectionChapter
         delegate?.setChapter(sectionChapter)
+        retargetTTSIfNeeded(to: sectionChapter, pages: sections[index].pages)
 
         // Refresh navigation pointers
         previousChapter = delegate?.getPreviousChapter()
