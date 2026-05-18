@@ -958,6 +958,16 @@ extension ReaderTextViewController: TTSChapterProvider {
         return (prevCh.key, text)
     }
 
+    /// Reserve space at the bottom for the docked TTS mini-player so text is
+    /// never drawn under it, and hide the page-seeker while listening.
+    /// (This controller has no in-reader page-seeker view; the seeker lives in
+    /// the parent's `ReaderToolbarView`, so only the inset is applied here.)
+    func setTTSBottomReservation(_ height: CGFloat) {
+        let active = height > 0
+        scrollView.contentInset.bottom = active ? height : 0
+        scrollView.verticalScrollIndicatorInsets.bottom = active ? height : 0
+    }
+
     func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {
         NotificationCenter.default.post(
             name: .ttsActiveParagraph,

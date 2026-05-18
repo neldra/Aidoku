@@ -1283,7 +1283,7 @@ extension ReaderViewController {
         host.didMove(toParent: self)
         let bottom = host.view.bottomAnchor.constraint(
             equalTo: self.view.safeAreaLayoutGuide.bottomAnchor,
-            constant: -52
+            constant: 0
         )
         NSLayoutConstraint.activate([
             host.view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
@@ -1299,9 +1299,16 @@ extension ReaderViewController {
             .sink { [weak self] active in
                 if !active { self?.hideTTSMiniPlayer() }
             }
+
+        host.view.layoutIfNeeded()
+        let stripHeight = host.view.systemLayoutSizeFitting(
+            UIView.layoutFittingCompressedSize
+        ).height + self.view.safeAreaInsets.bottom
+        (reader as? ReaderTextViewController)?.setTTSBottomReservation(stripHeight)
     }
 
     private func hideTTSMiniPlayer() {
+        (reader as? ReaderTextViewController)?.setTTSBottomReservation(0)
         ttsMiniPlayerController?.willMove(toParent: nil)
         ttsMiniPlayerController?.view.removeFromSuperview()
         ttsMiniPlayerController?.removeFromParent()
