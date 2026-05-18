@@ -13,6 +13,13 @@ struct TTSMiniPlayerView: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            Button(action: tts.skipBackward) {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+
             Button(action: tts.togglePlayPause) {
                 Image(systemName: tts.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 14, weight: .bold))
