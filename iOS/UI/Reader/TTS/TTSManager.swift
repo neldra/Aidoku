@@ -4,6 +4,7 @@
 //
 
 import AVFoundation
+import MediaPlayer
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -85,6 +86,8 @@ final class TTSManager: NSObject, ObservableObject {
         queue = TTSQueue(paragraphs: paragraphs, startIndex: startIndex)
         paragraphCount = queue.count
         isActive = true
+        activateAudioSession()
+        configureRemoteCommands()
         speakCurrent()
     }
 
@@ -100,11 +103,13 @@ final class TTSManager: NSObject, ObservableObject {
         } else {
             isPlaying = true
         }
+        updateNowPlaying()
     }
 
     func pause() {
         synthesizer.pauseSpeakingNow()
         isPlaying = false
+        updateNowPlaying()
     }
 
     func skipForward() {
@@ -133,6 +138,8 @@ final class TTSManager: NSObject, ObservableObject {
         synthesizer.stopSpeakingNow()
         isPlaying = false
         isActive = false
+        deactivateAudioSession()
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     #if DEBUG
@@ -141,6 +148,66 @@ final class TTSManager: NSObject, ObservableObject {
     #endif
 
     // MARK: - Internals
+
+    private func activateAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .spokenAudio)
+        try? session.setActive(true)
+    }
+
+    private func deactivateAudioSession() {
+        try? AVAudioSession.sharedInstance()
+            .setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func configureRemoteCommands() {
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.removeTarget(nil)
+        center.pauseCommand.removeTarget(nil)
+        center.nextTrackCommand.removeTarget(nil)
+        center.previousTrackCommand.removeTarget(nil)
+        center.skipForwardCommand.removeTarget(nil)
+        center.skipBackwardCommand.removeTarget(nil)
+
+        center.playCommand.addTarget { [weak self] _ in
+            self?.play(); return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            self?.pause(); return .success
+        }
+        center.skipForwardCommand.preferredIntervals = [1]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            self?.skipForward(); return .success
+        }
+        center.skipBackwardCommand.preferredIntervals = [1]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            self?.skipBackward(); return .success
+        }
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            self.handleUtteranceFinished() // jump to next chapter boundary
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            self?.resetChapter(); return .success
+        }
+    }
+
+    private func updateNowPlaying() {
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle:
+                provider?.ttsChapterTitle(forKey: currentChapterKey ?? "") ?? "",
+            MPMediaItemPropertyArtist: provider?.ttsNovelTitle ?? "",
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+            MPMediaItemPropertyPlaybackDuration: Double(max(queue.count - 1, 1)),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: Double(queue.index)
+        ]
+        if let art = provider?.ttsArtwork {
+            info[MPMediaItemPropertyArtwork] =
+                MPMediaItemArtwork(boundsSize: art.size) { _ in art }
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
 
     private func restartCurrent() {
         guard isActive, synthesizer.isSpeaking || synthesizer.isPaused else { return }
@@ -163,6 +230,7 @@ final class TTSManager: NSObject, ObservableObject {
         )
         isPlaying = true
         synthesizer.speakUtterance(utterance)
+        updateNowPlaying()
     }
 
     /// Called when an utterance finishes naturally: advance, or load next chapter.
