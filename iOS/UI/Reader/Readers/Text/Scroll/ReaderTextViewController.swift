@@ -945,6 +945,19 @@ extension ReaderTextViewController: TTSChapterProvider {
         return (nextCh.key, text)
     }
 
+    func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)? {
+        guard let prevCh = delegate?.getPreviousChapter(), !ttsLoadingNext else { return nil }
+        ttsLoadingNext = true
+        defer { ttsLoadingNext = false }
+        await viewModel.preload(chapter: prevCh)
+        guard viewModel.preloadedChapter == prevCh else { return nil }
+        let pages = viewModel.preloadedPages
+        guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.resolvedText() else {
+            return nil
+        }
+        return (prevCh.key, text)
+    }
+
     func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {
         NotificationCenter.default.post(
             name: .ttsActiveParagraph,
