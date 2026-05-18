@@ -56,7 +56,6 @@ class ReaderViewController: BaseObservingViewController {
     private var ttsBarButton: UIBarButtonItem?
     private var ttsMiniPlayerController: UIHostingController<TTSMiniPlayerView>?
     private var ttsMiniPlayerBottomConstraint: NSLayoutConstraint?
-    private var ttsObserver: NSObjectProtocol?
     private var ttsDeactivationCancellable: AnyCancellable?
 
     private var squeezeTimer: Timer?
@@ -129,10 +128,6 @@ class ReaderViewController: BaseObservingViewController {
             case .unknown: .none
         }
         super.init()
-    }
-
-    deinit {
-        if let ttsObserver { NotificationCenter.default.removeObserver(ttsObserver) }
     }
 
     override func configure() {
@@ -1298,10 +1293,6 @@ extension ReaderViewController {
         ttsMiniPlayerController = host
         ttsMiniPlayerBottomConstraint = bottom
 
-        ttsObserver = NotificationCenter.default.addObserver(
-            forName: nil, object: TTSManager.shared, queue: .main
-        ) { _ in } // placeholder; SwiftUI @ObservedObject drives updates
-
         // Hide the mini-player when TTS deactivates.
         ttsDeactivationCancellable = TTSManager.shared.$isActive
             .receive(on: DispatchQueue.main)
@@ -1315,5 +1306,6 @@ extension ReaderViewController {
         ttsMiniPlayerController?.view.removeFromSuperview()
         ttsMiniPlayerController?.removeFromParent()
         ttsMiniPlayerController = nil
+        ttsDeactivationCancellable = nil
     }
 }
