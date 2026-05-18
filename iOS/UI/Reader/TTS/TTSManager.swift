@@ -133,7 +133,7 @@ final class TTSManager: NSObject, ObservableObject {
 
     /// Restart the current chapter from its first paragraph.
     func resetChapter() {
-        queue.seek(to: 0)
+        queue.seek(to: queue.firstIndexOfCurrentChapter)
         speakCurrent()
     }
 
@@ -202,6 +202,7 @@ final class TTSManager: NSObject, ObservableObject {
             MPMediaItemPropertyTitle:
                 provider?.ttsChapterTitle(forKey: currentChapterKey ?? "") ?? "",
             MPMediaItemPropertyArtist: provider?.ttsNovelTitle ?? "",
+            MPNowPlayingInfoPropertyIsLiveStream: true,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
         if let art = provider?.ttsArtwork {
@@ -267,7 +268,7 @@ final class TTSManager: NSObject, ObservableObject {
         // Reuse the natural end-of-chapter path: jump to the last paragraph
         // of the current chapter, then let finish-handling load and roll
         // into the next chapter.
-        queue.seek(to: max(0, queue.count - 1))
+        queue.seek(to: queue.lastIndexOfCurrentChapter)
         handleUtteranceFinished()
     }
 
