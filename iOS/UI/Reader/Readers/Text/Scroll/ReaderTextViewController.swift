@@ -125,7 +125,7 @@ class ReaderTextViewController: BaseViewController {
                 fontFamily: currentFontFamily, fontSize: currentFontSize,
                 lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding,
                 onParagraphFrames: { [weak self] frames in
-                    self?.ttsParagraphFrames[page?.chapterId ?? ""] = frames
+                    self?.ttsStoreFrames(frames, chapterKey: page?.chapterId ?? "")
                 }
             )
         )
@@ -197,7 +197,7 @@ class ReaderTextViewController: BaseViewController {
                     fontFamily: currentFontFamily, fontSize: currentFontSize,
                     lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding,
                     onParagraphFrames: { [weak self] frames in
-                        self?.ttsParagraphFrames[page?.chapterId ?? ""] = frames
+                        self?.ttsStoreFrames(frames, chapterKey: page?.chapterId ?? "")
                     }
                 )
                 hc.view.invalidateIntrinsicContentSize()
@@ -672,6 +672,21 @@ extension ReaderTextViewController {
                 loadingNext = false
             }
         }
+    }
+
+    /// Store a chapter's paragraph frames; if that chapter is the one TTS is
+    /// currently speaking, (re-)drive the active-paragraph scroll now that
+    /// its geometry exists. Idempotent — re-scrolling to the current
+    /// paragraph is harmless.
+    private func ttsStoreFrames(_ frames: [Int: CGRect], chapterKey: String) {
+        ttsParagraphFrames[chapterKey] = frames
+        guard TTSManager.shared.isActive,
+              TTSManager.shared.currentChapterKey == chapterKey else { return }
+        ttsActiveParagraphChanged(Notification(
+            name: .ttsActiveParagraph, object: nil,
+            userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                       "chapterKey": chapterKey]
+        ))
     }
 
     /// Make sure `key`'s chapter is appended/rendered so TTS highlight/scroll
