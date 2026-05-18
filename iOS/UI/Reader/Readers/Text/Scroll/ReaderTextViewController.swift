@@ -59,6 +59,9 @@ class ReaderTextViewController: BaseViewController {
     /// Extra bottom space reserved for the docked TTS mini-player, preserved
     /// across safe-area changes so a mid-session inset reset doesn't wipe it.
     private var ttsReservationBottom: CGFloat = 0
+    /// Latest per-paragraph frames (chapter-local index → rect in the
+    /// "ttsReaderContent" space), keyed by chapter key, fed by ReaderTextView.
+    private var ttsParagraphFrames: [String: [Int: CGRect]] = [:]
 
     // MARK: - Scroll Position Persistence
 
@@ -118,7 +121,10 @@ class ReaderTextViewController: BaseViewController {
             rootView: ReaderTextView(
                 source: viewModel.source, page: page,
                 fontFamily: currentFontFamily, fontSize: currentFontSize,
-                lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding
+                lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding,
+                onParagraphFrames: { [weak self] frames in
+                    self?.ttsParagraphFrames[page?.chapterId ?? ""] = frames
+                }
             )
         )
         if #available(iOS 16.0, *) {
@@ -181,7 +187,10 @@ class ReaderTextViewController: BaseViewController {
                 hc.rootView = ReaderTextView(
                     source: viewModel.source, page: page,
                     fontFamily: currentFontFamily, fontSize: currentFontSize,
-                    lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding
+                    lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding,
+                    onParagraphFrames: { [weak self] frames in
+                        self?.ttsParagraphFrames[page?.chapterId ?? ""] = frames
+                    }
                 )
                 hc.view.invalidateIntrinsicContentSize()
             }
@@ -198,6 +207,21 @@ class ReaderTextViewController: BaseViewController {
             name: .ttsActiveParagraph,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard
+                let self,
+                UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true,
+                TTSManager.shared.isActive,
+                let key = TTSManager.shared.currentChapterKey
+            else { return }
+            self.ttsActiveParagraphChanged(Notification(
+                name: .ttsActiveParagraph, object: nil,
+                userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                           "chapterKey": key]
+            ))
+        }
 
         let styleKeys = [
             "Reader.textFontFamily",
@@ -902,16 +926,13 @@ extension ReaderTextViewController: TTSChapterProvider {
     /// within the current chapter's section.
     var nearestParagraphIndex: Int {
         guard let sectionIndex = currentSectionIndex else { return 0 }
-        let section = sections[sectionIndex]
-        guard let text = section.pages.first?.resolvedText() else { return 0 }
-        let paragraphCount = TTSText.splitParagraphs(text).count
-        guard paragraphCount > 0 else { return 0 }
-        let startY = sectionContentStartY(at: sectionIndex)
-        let height = sectionContentHeight(at: sectionIndex)
-        guard height > 0 else { return 0 }
-        let center = scrollView.contentOffset.y + scrollView.frame.height / 2
-        let fraction = min(1, max(0, (center - startY) / height))
-        return min(paragraphCount - 1, Int(fraction * Double(paragraphCount)))
+        let key = sections[sectionIndex].chapter.key
+        guard let frames = ttsParagraphFrames[key], !frames.isEmpty else { return 0 }
+        let visibleTop = scrollView.contentOffset.y
+        let localTop = visibleTop - sectionContentStartY(at: sectionIndex)
+        let ordered = frames.sorted { $0.key < $1.key }
+        let firstVisible = ordered.first(where: { $0.value.maxY > localTop })?.key
+        return firstVisible ?? ordered.last?.key ?? 0
     }
 
     var currentChapterText: (key: String, text: String)? {
@@ -984,13 +1005,12 @@ extension ReaderTextViewController: TTSChapterProvider {
             UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true,
             let index = note.userInfo?["index"] as? Int,
             let chapterKey = note.userInfo?["chapterKey"] as? String,
-            let sectionIndex = sections.firstIndex(where: { $0.chapter.key == chapterKey })
+            let sectionIndex = sections.firstIndex(where: { $0.chapter.key == chapterKey }),
+            let frame = ttsParagraphFrames[chapterKey]?[index]
         else { return }
-        let startY = sectionContentStartY(at: sectionIndex)
-        let height = sectionContentHeight(at: sectionIndex)
-        let count = max(1, TTSText.splitParagraphs(sections[sectionIndex].pages.first?.resolvedText() ?? "").count)
-        let paragraphTop = startY + height * (CGFloat(index) / CGFloat(count))
-        let target = paragraphTop - scrollView.frame.height / 3
+        let sectionStartY = sectionContentStartY(at: sectionIndex)
+        let unobstructedHeight = scrollView.frame.height - scrollView.contentInset.bottom
+        let target = sectionStartY + frame.minY - unobstructedHeight / 3
         let maxOffset = max(0, scrollView.contentSize.height - scrollView.frame.height)
         scrollView.setContentOffset(
             CGPoint(x: 0, y: min(max(0, target), maxOffset)),
