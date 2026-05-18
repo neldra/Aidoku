@@ -165,12 +165,23 @@ final class TTSManager: NSObject, ObservableObject {
 
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
+        // Eyes-free surface: only play/pause + whole-chapter prev/next.
+        // Paragraph skip is a reading-context action (in-app only); the
+        // ±-second skip glyphs misrepresent it, so disable them.
         center.playCommand.removeTarget(nil)
         center.pauseCommand.removeTarget(nil)
         center.nextTrackCommand.removeTarget(nil)
         center.previousTrackCommand.removeTarget(nil)
         center.skipForwardCommand.removeTarget(nil)
         center.skipBackwardCommand.removeTarget(nil)
+        center.skipForwardCommand.isEnabled = false
+        center.skipBackwardCommand.isEnabled = false
+        center.changePlaybackPositionCommand.isEnabled = false
+
+        center.playCommand.isEnabled = true
+        center.pauseCommand.isEnabled = true
+        center.nextTrackCommand.isEnabled = true
+        center.previousTrackCommand.isEnabled = true
 
         center.playCommand.addTarget { [weak self] _ in
             self?.play(); return .success
@@ -178,21 +189,11 @@ final class TTSManager: NSObject, ObservableObject {
         center.pauseCommand.addTarget { [weak self] _ in
             self?.pause(); return .success
         }
-        center.skipForwardCommand.preferredIntervals = [1]
-        center.skipForwardCommand.addTarget { [weak self] _ in
-            self?.skipForward(); return .success
-        }
-        center.skipBackwardCommand.preferredIntervals = [1]
-        center.skipBackwardCommand.addTarget { [weak self] _ in
-            self?.skipBackward(); return .success
-        }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            self.handleUtteranceFinished() // jump to next chapter boundary
-            return .success
+            self?.skipToNextChapter(); return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            self?.resetChapter(); return .success
+            self?.skipToPreviousChapter(); return .success
         }
     }
 
@@ -201,9 +202,7 @@ final class TTSManager: NSObject, ObservableObject {
             MPMediaItemPropertyTitle:
                 provider?.ttsChapterTitle(forKey: currentChapterKey ?? "") ?? "",
             MPMediaItemPropertyArtist: provider?.ttsNovelTitle ?? "",
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPMediaItemPropertyPlaybackDuration: Double(max(queue.count - 1, 1)),
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: Double(queue.index)
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
         if let art = provider?.ttsArtwork {
             info[MPMediaItemPropertyArtwork] =
