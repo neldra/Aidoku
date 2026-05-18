@@ -697,6 +697,8 @@ extension ReaderTextViewController {
         // exactly what appendNextChapter() renders.
         if nextChapter?.key == key {
             appendNextChapter()
+        } else if previousChapter?.key == key {
+            prependPreviousChapter()
         }
     }
 
@@ -773,6 +775,17 @@ extension ReaderTextViewController {
                 let newContentHeight = scrollView.contentSize.height
                 let heightDelta = newContentHeight - oldContentHeight
                 scrollView.contentOffset.y = oldOffset + heightDelta
+
+                if TTSManager.shared.isActive,
+                   let k = TTSManager.shared.currentChapterKey {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.ttsActiveParagraphChanged(Notification(
+                            name: .ttsActiveParagraph, object: nil,
+                            userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                                       "chapterKey": k]
+                        ))
+                    }
+                }
 
                 loadingPrevious = false
             }
