@@ -77,4 +77,25 @@ import Testing
         q.advance()
         #expect(q.localIndexInCurrentChapter == 1)
     }
+
+    @Test("rewind is the exact inverse of advance across paragraphs and stays in bounds")
+    func rewindInverseOfAdvance() {
+        var q = TTSQueue(
+            paragraphs: TTSText.paragraphs(chapterKey: "c1", text: "A\n\nB\n\nC\n\nD"),
+            startIndex: 0
+        )
+        #expect(q.index == 0)
+        _ = q.advance(); _ = q.advance()      // 0 -> 1 -> 2
+        #expect(q.index == 2)
+        _ = q.rewind()                        // 2 -> 1  (must go DOWN)
+        #expect(q.index == 1)
+        _ = q.rewind()                        // 1 -> 0
+        #expect(q.index == 0)
+        #expect(q.rewind() == nil)            // clamped at start, no underflow
+        #expect(q.index == 0)
+        _ = q.advance(); _ = q.advance(); _ = q.advance() // 0 ->1->2->3 (last)
+        #expect(q.index == 3)
+        #expect(q.advance() == nil)           // clamped at end, no overflow
+        #expect(q.index == 3)
+    }
 }
