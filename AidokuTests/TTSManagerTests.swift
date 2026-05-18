@@ -32,6 +32,7 @@ private final class StubProvider: TTSChapterProvider {
         defer { nextChapter = nil }
         return nextChapter
     }
+    func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)? { nil }
     func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {
         activated.append(localIndex)
     }
