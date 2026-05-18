@@ -897,13 +897,13 @@ extension ReaderTextViewController: TTSChapterProvider {
     /// Global paragraph index nearest the vertical center of the viewport,
     /// within the current chapter's section.
     var nearestParagraphIndex: Int {
-        guard let sectionIndex = currentSectionIndexForTTS else { return 0 }
+        guard let sectionIndex = currentSectionIndex else { return 0 }
         let section = sections[sectionIndex]
         guard let text = section.pages.first?.text else { return 0 }
         let paragraphCount = TTSText.splitParagraphs(text).count
         guard paragraphCount > 0 else { return 0 }
-        let startY = sectionContentStartYForTTS(at: sectionIndex)
-        let height = sectionContentHeightForTTS(at: sectionIndex)
+        let startY = sectionContentStartY(at: sectionIndex)
+        let height = sectionContentHeight(at: sectionIndex)
         guard height > 0 else { return 0 }
         let center = scrollView.contentOffset.y + scrollView.frame.height / 2
         let fraction = min(1, max(0, (center - startY) / height))
@@ -911,7 +911,7 @@ extension ReaderTextViewController: TTSChapterProvider {
     }
 
     var currentChapterText: (key: String, text: String)? {
-        guard let sectionIndex = currentSectionIndexForTTS else { return nil }
+        guard let sectionIndex = currentSectionIndex else { return nil }
         let section = sections[sectionIndex]
         guard let text = section.pages.first?.text else { return nil }
         return (section.chapter.key, text)
@@ -929,7 +929,9 @@ extension ReaderTextViewController: TTSChapterProvider {
     var ttsArtwork: UIImage? { nil } // supplied by ReaderViewController instead
 
     func ttsLoadNextChapter() async -> (chapterKey: String, text: String)? {
-        guard let nextCh = delegate?.getNextChapter() else { return nil }
+        guard let nextCh = delegate?.getNextChapter(), !loadingNext else { return nil }
+        loadingNext = true
+        defer { loadingNext = false }
         await viewModel.preload(chapter: nextCh)
         let pages = viewModel.preloadedPages
         guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.text else {
@@ -953,8 +955,8 @@ extension ReaderTextViewController: TTSChapterProvider {
             let chapterKey = note.userInfo?["chapterKey"] as? String,
             let sectionIndex = sections.firstIndex(where: { $0.chapter.key == chapterKey })
         else { return }
-        let startY = sectionContentStartYForTTS(at: sectionIndex)
-        let height = sectionContentHeightForTTS(at: sectionIndex)
+        let startY = sectionContentStartY(at: sectionIndex)
+        let height = sectionContentHeight(at: sectionIndex)
         let count = max(1, TTSText.splitParagraphs(sections[sectionIndex].pages.first?.text ?? "").count)
         let paragraphTop = startY + height * (CGFloat(index) / CGFloat(count))
         let target = paragraphTop - scrollView.frame.height / 3
@@ -963,32 +965,5 @@ extension ReaderTextViewController: TTSChapterProvider {
             CGPoint(x: 0, y: min(max(0, target), maxOffset)),
             animated: true
         )
-    }
-
-    // Reuse the controller's private section math via thin internal wrappers.
-    private var currentSectionIndexForTTS: Int? {
-        guard !sections.isEmpty else { return nil }
-        let center = scrollView.contentOffset.y + scrollView.frame.height / 2
-        var offset: CGFloat = 0
-        for (i, section) in sections.enumerated() {
-            let h = section.hostingControllers.reduce(0) { $0 + $1.view.frame.height }
-                + (section.transitionHeightConstraint?.constant ?? 0)
-            if center < offset + h || i == sections.count - 1 { return i }
-            offset += h
-        }
-        return sections.count - 1
-    }
-
-    private func sectionContentStartYForTTS(at sectionIndex: Int) -> CGFloat {
-        var offset: CGFloat = 0
-        for i in 0..<sectionIndex {
-            offset += sections[i].hostingControllers.reduce(0) { $0 + $1.view.frame.height }
-            offset += sections[i].transitionHeightConstraint?.constant ?? 0
-        }
-        return offset
-    }
-
-    private func sectionContentHeightForTTS(at sectionIndex: Int) -> CGFloat {
-        sections[sectionIndex].hostingControllers.reduce(0) { $0 + $1.view.frame.height }
     }
 }
