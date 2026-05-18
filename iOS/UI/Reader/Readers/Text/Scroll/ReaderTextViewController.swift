@@ -62,6 +62,7 @@ class ReaderTextViewController: BaseViewController {
     /// Latest per-paragraph frames (chapter-local index → rect in the
     /// "ttsReaderContent" space), keyed by chapter key, fed by ReaderTextView.
     private var ttsParagraphFrames: [String: [Int: CGRect]] = [:]
+    private var ttsLastHighlightEnabled = UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true
 
     // MARK: - Scroll Position Persistence
 
@@ -210,9 +211,12 @@ class ReaderTextViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
+            guard let self else { return }
+            let enabled = UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true
+            guard enabled != self.ttsLastHighlightEnabled else { return }
+            self.ttsLastHighlightEnabled = enabled
             guard
-                let self,
-                UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true,
+                enabled,
                 TTSManager.shared.isActive,
                 let key = TTSManager.shared.currentChapterKey
             else { return }
