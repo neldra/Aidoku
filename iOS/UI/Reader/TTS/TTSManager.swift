@@ -135,6 +135,11 @@ final class TTSManager: NSObject, ObservableObject {
         isActive = false
     }
 
+    #if DEBUG
+    /// Test seam: simulate the synthesizer finishing the current utterance.
+    func handleUtteranceFinishedForTesting() { handleUtteranceFinished() }
+    #endif
+
     // MARK: - Internals
 
     private func restartCurrent() {
