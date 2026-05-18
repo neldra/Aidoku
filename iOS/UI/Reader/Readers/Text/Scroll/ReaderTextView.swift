@@ -93,12 +93,12 @@ struct ReaderTextView: View {
                     .animation(.easeInOut(duration: 0.2), value: isHighlighted(paragraph))
                 }
             }
-            .coordinateSpace(name: "ttsReaderContent")
             .onPreferenceChange(TTSParagraphFramesKey.self) { onParagraphFrames?($0) }
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical)
             .frame(maxWidth: .infinity, alignment: .leading)
             .ignoresSafeArea()
+            .coordinateSpace(name: "ttsReaderContent")
         }
     }
 }
