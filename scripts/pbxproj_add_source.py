@@ -68,6 +68,18 @@ def main():
     src_dir = os.path.dirname(rel)  # e.g. iOS/UI/Reader/TTS
     if not src_dir:
         die("path must include a directory under SOURCE_ROOT", 2)
+    # pbxproj string values containing anything outside this set must be
+    # quoted. This tool emits unquoted paths by design; rather than ship
+    # quoting machinery for a case the codebase never hits (no source path
+    # here has a space), refuse loudly so a bad path can never silently
+    # produce a malformed project file.
+    if not re.fullmatch(r"[A-Za-z0-9_./-]+", rel):
+        die(
+            f"path {rel!r} needs pbxproj quoting; this tool refuses rather "
+            f"than risk a malformed project. Add it via Xcode, or extend "
+            f"this tool with quote-aware emit.",
+            2,
+        )
     if not os.path.isfile(PBXPROJ):
         die(f"{PBXPROJ} not found -- run from the Aidoku/ directory", 2)
     if not os.path.isfile(rel):
@@ -76,9 +88,13 @@ def main():
     text = open(PBXPROJ, encoding="utf-8").read()
     lines = text.split("\n")
 
-    # ---- idempotency: refuse if already registered --------------------
-    if re.search(r"/\* " + re.escape(base) + r" \*/", text):
-        print(f"{base} already registered; nothing to do.")
+    # ---- idempotency: refuse only if THIS exact file path is already
+    #      referenced. Keying on basename is wrong -- duplicate basenames
+    #      across directories are common, and a basename match would make
+    #      this script silently no-op (exit 3) on a genuinely new file,
+    #      leaving it absent from the build. --------------------
+    if f"path = {rel};" in text or f'path = "{rel}";' in text:
+        print(f"{rel} already registered; nothing to do.")
         sys.exit(3)
 
     # ---- 1. sibling PBXFileReference ids already under src_dir --------
