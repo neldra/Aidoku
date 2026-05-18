@@ -43,6 +43,7 @@
 		8D8F491F92C6F060E9D73336 /* TTSQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9347BA9833359968D5B48F /* TTSQueue.swift */; };
 		43761130A866D39BCD7D5228 /* SpeechSynthesizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */; };
 		643AF950B661E1EF1C69677B /* TTSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */; };
+		C757CFC69BE490E20BC08845 /* TTSMiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780FC2B5563CA9CE6085A472 /* TTSMiniPlayerView.swift */; };
 		FB02E1EB288CC1DA00B9E2DE /* LibraryViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1EA288CC1DA00B9E2DE /* LibraryViewController.swift */; };
 		FB02E1F2288D7BE900B9E2DE /* MangaGridCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1F1288D7BE900B9E2DE /* MangaGridCell.swift */; };
 		FB02E1F4288D7C0C00B9E2DE /* Manga.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1F3288D7C0C00B9E2DE /* Manga.swift */; };
@@ -640,6 +641,7 @@
 		9B9347BA9833359968D5B48F /* TTSQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSQueue.swift; path = iOS/UI/Reader/TTS/TTSQueue.swift; sourceTree = SOURCE_ROOT; };
 		F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeechSynthesizing.swift; path = iOS/UI/Reader/TTS/SpeechSynthesizing.swift; sourceTree = SOURCE_ROOT; };
 		8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSManager.swift; path = iOS/UI/Reader/TTS/TTSManager.swift; sourceTree = SOURCE_ROOT; };
+		780FC2B5563CA9CE6085A472 /* TTSMiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSMiniPlayerView.swift; path = iOS/UI/Reader/TTS/TTSMiniPlayerView.swift; sourceTree = SOURCE_ROOT; };
 		FB02E1EA288CC1DA00B9E2DE /* LibraryViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewController.swift; sourceTree = "<group>"; };
 		FB02E1F1288D7BE900B9E2DE /* MangaGridCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaGridCell.swift; sourceTree = "<group>"; };
 		FB02E1F3288D7C0C00B9E2DE /* Manga.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Manga.swift; sourceTree = "<group>"; };
@@ -1370,6 +1372,7 @@
 				9B9347BA9833359968D5B48F /* TTSQueue.swift */,
 				F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */,
 				8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */,
+				780FC2B5563CA9CE6085A472 /* TTSMiniPlayerView.swift */,
 			);
 			indentWidth = 4;
 			sourceTree = "<group>";
@@ -2977,6 +2980,7 @@
 				8D8F491F92C6F060E9D73336 /* TTSQueue.swift in Sources */,
 				43761130A866D39BCD7D5228 /* SpeechSynthesizing.swift in Sources */,
 				643AF950B661E1EF1C69677B /* TTSManager.swift in Sources */,
+				C757CFC69BE490E20BC08845 /* TTSMiniPlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
