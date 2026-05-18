@@ -39,6 +39,7 @@ class ReaderTextViewController: BaseViewController {
 
     private var isLoadingChapter = false
     private var loadingNext = false
+    private var ttsLoadingNext = false
     private var loadingPrevious = false
     private var hasReachedEnd = false
 
@@ -929,10 +930,14 @@ extension ReaderTextViewController: TTSChapterProvider {
     var ttsArtwork: UIImage? { nil } // supplied by ReaderViewController instead
 
     func ttsLoadNextChapter() async -> (chapterKey: String, text: String)? {
-        guard let nextCh = delegate?.getNextChapter(), !loadingNext else { return nil }
-        loadingNext = true
-        defer { loadingNext = false }
+        guard let nextCh = delegate?.getNextChapter(), !ttsLoadingNext else { return nil }
+        ttsLoadingNext = true
+        defer { ttsLoadingNext = false }
         await viewModel.preload(chapter: nextCh)
+        // The preload slot is shared with the infinite-scroll loader. Only
+        // consume it if it still holds the chapter we requested; a concurrent
+        // appendNextChapter could otherwise feed the wrong chapter's text.
+        guard viewModel.preloadedChapter == nextCh else { return nil }
         let pages = viewModel.preloadedPages
         guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.text else {
             return nil
