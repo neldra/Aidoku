@@ -567,6 +567,9 @@
 "TTS_START" = "Start listening";
 "TTS_PAUSE" = "Pause listening";
 "TTS_RESUME" = "Resume listening";
+"TTS_SHOW_ALL_LANGUAGES" = "Show All Languages";
+"TTS_QUALITY_ENHANCED" = "Enhanced";
+"TTS_QUALITY_PREMIUM" = "Premium";
 
 // Backups
 "BACKUPS" = "Backups";

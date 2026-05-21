@@ -11,6 +11,10 @@ import SwiftUI
 struct ReaderSettingsView: View {
     let mangaId: MangaIdentifier
     let reader: ReaderViewController.Reader
+    /// ISO 639-1 language code of the chapter currently in the reader, or nil
+    /// when the source doesn't tag chapters with a language. Used to default
+    /// the TTS voice picker to relevant voices.
+    let chapterLanguage: String?
 
     @State private var readingMode: ReadingMode?
     @State private var tapZones: DefaultTapZones
@@ -28,9 +32,14 @@ struct ReaderSettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    init(mangaId: MangaIdentifier, reader: ReaderViewController.Reader) {
+    init(
+        mangaId: MangaIdentifier,
+        reader: ReaderViewController.Reader,
+        chapterLanguage: String? = nil
+    ) {
         self.mangaId = mangaId
         self.reader = reader
+        self.chapterLanguage = chapterLanguage
         self._readingMode = State(
             initialValue: UserDefaults.standard.string(forKey: "Reader.readingMode.\(mangaId)")
                 .flatMap(ReadingMode.init)
@@ -247,7 +256,7 @@ struct ReaderSettingsView: View {
                         )
                     }
 
-                    TTSReaderSettingsSection()
+                    TTSReaderSettingsSection(chapterLanguage: chapterLanguage)
                 } else {
                     if !downsampleImages.value {
                         Section {
@@ -406,15 +415,16 @@ struct ReaderSettingsView: View {
 }
 
 private struct TTSReaderSettingsSection: View {
+    let chapterLanguage: String?
+
     @ObservedObject private var tts = TTSManager.shared
 
     /// Local draft while the user drags the slider. Rate changes restart
     /// the current utterance, so we only commit on slider release.
     @State private var draftRate: Float?
+    @State private var showAllLanguages: Bool = false
 
-    private static let voices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice
-        .speechVoices()
-        .sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+    private static let allVoices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice.speechVoices()
 
     private var currentRate: Float { draftRate ?? tts.rate }
     private var rateMultiplier: Float {
@@ -422,14 +432,80 @@ private struct TTSReaderSettingsSection: View {
         return currentRate / AVSpeechUtteranceDefaultSpeechRate
     }
 
+    /// Falls back to the device language when the source doesn't tag the
+    /// chapter. Picker filtering hinges on this.
+    private var filterLanguageCode: String {
+        chapterLanguage ?? Locale.current.languageCode ?? "en"
+    }
+
+    private var displayedVoices: [AVSpeechSynthesisVoice] {
+        let all = Self.allVoices
+        let voices: [AVSpeechSynthesisVoice]
+        if showAllLanguages {
+            voices = all
+        } else {
+            let code = filterLanguageCode
+            let filtered = all.filter { v in
+                v.language == code || v.language.hasPrefix("\(code)-")
+            }
+            // Empty filter would leave the picker unusable; fall back to all.
+            if filtered.isEmpty {
+                voices = all
+            } else {
+                // Keep the user's currently-selected voice visible even if it
+                // sits outside the language filter.
+                let currentId = tts.voiceIdentifier
+                if !currentId.isEmpty,
+                   !filtered.contains(where: { $0.identifier == currentId }),
+                   let current = all.first(where: { $0.identifier == currentId }) {
+                    voices = filtered + [current]
+                } else {
+                    voices = filtered
+                }
+            }
+        }
+        return voices.sorted { lhs, rhs in
+            if lhs.quality.rawValue != rhs.quality.rawValue {
+                return lhs.quality.rawValue > rhs.quality.rawValue
+            }
+            if lhs.language != rhs.language {
+                return lhs.language < rhs.language
+            }
+            return lhs.name < rhs.name
+        }
+    }
+
+    /// Apple bakes the quality marker into `voice.name` for non-default
+    /// voices (e.g. "Ava (Premium)", "Samantha (Enhanced)"). Strip it so we
+    /// can present quality consistently via our own suffix instead.
+    private func cleanName(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: " (Premium)", with: "")
+            .replacingOccurrences(of: " (Enhanced)", with: "")
+    }
+
+    private func displayName(for voice: AVSpeechSynthesisVoice) -> String {
+        let base = "\(cleanName(voice.name)) (\(voice.language))"
+        switch voice.quality {
+        case .premium:
+            return "\(base) — \(NSLocalizedString("TTS_QUALITY_PREMIUM"))"
+        case .enhanced:
+            return "\(base) — \(NSLocalizedString("TTS_QUALITY_ENHANCED"))"
+        default:
+            return base
+        }
+    }
+
     var body: some View {
         Section(String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("TEXT_TO_SPEECH"))) {
             Picker(NSLocalizedString("TTS_VOICE"), selection: $tts.voiceIdentifier) {
-                ForEach(Self.voices, id: \.identifier) { voice in
-                    Text("\(voice.name) (\(voice.language))")
+                ForEach(displayedVoices, id: \.identifier) { voice in
+                    Text(displayName(for: voice))
                         .tag(voice.identifier)
                 }
             }
+
+            Toggle(NSLocalizedString("TTS_SHOW_ALL_LANGUAGES"), isOn: $showAllLanguages)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
