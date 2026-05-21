@@ -103,6 +103,9 @@ final class TTSManager: NSObject, ObservableObject {
     /// AVAudioSession interruption observer (phone call, Siri, AirPods press
     /// in some routings). Kept alive for the singleton's lifetime.
     private var interruptionObserver: NSObjectProtocol?
+    /// AVAudioSession route-change observer (headphone/AirPods/Bluetooth
+    /// disconnect). Kept alive for the singleton's lifetime.
+    private var routeChangeObserver: NSObjectProtocol?
 
     /// Chapter-local (0...1); resets to 0 each time the active chapter
     /// changes so progress doesn't accumulate across the appended queue.
@@ -133,6 +136,7 @@ final class TTSManager: NSObject, ObservableObject {
         self.synthesizer.speechDelegate = self
         self.calibrator.reset(forVoice: voiceIdentifier)
         self.registerInterruptionObserver()
+        self.registerRouteChangeObserver()
     }
 
     // MARK: - Lifecycle
@@ -271,6 +275,36 @@ final class TTSManager: NSObject, ObservableObject {
             }
         @unknown default:
             break
+        }
+    }
+
+    /// Register once for the lifetime of the singleton. The handler is a
+    /// no-op when no session is active.
+    private func registerRouteChangeObserver() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: nil
+        ) { [weak self] note in
+            Task { @MainActor [weak self] in
+                self?.handleRouteChange(note)
+            }
+        }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        guard isActive,
+              let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+        // `.oldDeviceUnavailable` is the canonical "active output route was
+        // lost" signal: headphone unplug, AirPods disconnect, Bluetooth
+        // speaker off. Per Apple's HIG, do NOT auto-resume on
+        // `.newDeviceAvailable` (headphone plug-in).
+        if reason == .oldDeviceUnavailable {
+            pause()
         }
     }
 
