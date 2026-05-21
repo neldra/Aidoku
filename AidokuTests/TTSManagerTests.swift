@@ -9,15 +9,20 @@ private final class MockSynth: SpeechSynthesizing {
     var isSpeaking = false
     var isPaused = false
     private(set) var spoken: [String] = []
+    private(set) var utterances: [AVSpeechUtterance] = []
 
     func speakUtterance(_ utterance: AVSpeechUtterance) {
         isSpeaking = true
         isPaused = false
         spoken.append(utterance.speechString)
+        utterances.append(utterance)
     }
-    func stopSpeakingNow() -> Bool { isSpeaking = false; return true }
-    func pauseSpeakingNow() -> Bool { isPaused = true; return true }
+    func stopSpeakingNow() -> Bool { isSpeaking = false; isPaused = false; return true }
+    func pauseSpeakingNow() -> Bool { isSpeaking = false; isPaused = true; return true }
     func continueSpeakingNow() -> Bool { isPaused = false; return true }
+    func finish(_ utterance: AVSpeechUtterance) {
+        speechDelegate?.speechSynthesizer?(AVSpeechSynthesizer(), didFinish: utterance)
+    }
 }
 
 @MainActor
@@ -26,13 +31,25 @@ private final class StubProvider: TTSChapterProvider {
     func ttsChapterTitle(forKey key: String) -> String { key }
     var ttsArtwork: UIImage? { nil }
     var nextChapter: (chapterKey: String, text: String)?
+    var previousChapter: (chapterKey: String, text: String)?
+    var nextChapterDelay: UInt64 = 0
+    var previousChapterDelay: UInt64 = 0
     private(set) var activated: [Int] = []
 
     func ttsLoadNextChapter() async -> (chapterKey: String, text: String)? {
+        if nextChapterDelay > 0 {
+            try? await Task.sleep(nanoseconds: nextChapterDelay)
+        }
         defer { nextChapter = nil }
         return nextChapter
     }
-    func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)? { nil }
+    func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)? {
+        if previousChapterDelay > 0 {
+            try? await Task.sleep(nanoseconds: previousChapterDelay)
+        }
+        defer { previousChapter = nil }
+        return previousChapter
+    }
     func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {
         activated.append(localIndex)
     }
@@ -53,6 +70,17 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.isActive && manager.isPlaying)
     }
 
+    @Test("start with no narratable paragraphs stays inactive")
+    func startEmptyStops() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        manager.start(provider: StubProvider(), chapterKey: "c1",
+                      text: " \n\n\t", startIndex: 0)
+        #expect(synth.spoken.isEmpty)
+        #expect(manager.isActive == false)
+        #expect(manager.isPlaying == false)
+    }
+
     @Test("finishing advances through paragraphs then stops at end")
     func advanceOnFinish() async {
         let synth = MockSynth()
@@ -65,6 +93,7 @@ private final class StubProvider: TTSChapterProvider {
         manager.handleUtteranceFinishedForTesting()   // no next chapter
         try? await Task.sleep(nanoseconds: 50_000_000)
         #expect(manager.isPlaying == false)
+        #expect(manager.isActive == false)
     }
 
     @Test("auto-advances into the next chapter when provided")
@@ -81,6 +110,46 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.currentChapterKey == "c2")
     }
 
+    @Test("pending next chapter load is ignored after stop")
+    func pendingNextIgnoredAfterStop() async {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        provider.nextChapterDelay = 50_000_000
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A", startIndex: 0)
+
+        manager.handleUtteranceFinishedForTesting()
+        manager.stop()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(synth.spoken == ["A"])
+        #expect(manager.isActive == false)
+        #expect(manager.isPlaying == false)
+    }
+
+    @Test("pending next chapter load cannot override user navigation")
+    func pendingNextIgnoredAfterUserNavigation() async {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        provider.nextChapterDelay = 50_000_000
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A", startIndex: 0)
+
+        manager.handleUtteranceFinishedForTesting()
+        manager.userDidNavigate(toChapterKey: "c5", text: "M\n\nN")
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(manager.currentChapterKey == "c5")
+        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentLocalIndex == 0)
+        #expect(synth.spoken == ["A", "M"])
+        #expect(provider.activated == [0, 0])
+    }
+
     @Test("skip forward/backward move one paragraph")
     func skip() {
         let synth = MockSynth()
@@ -91,6 +160,139 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.currentParagraphIndex == 1)
         manager.skipBackward()
         #expect(manager.currentParagraphIndex == 0)
+    }
+
+    @Test("controls are no-ops when inactive")
+    func inactiveControlsNoop() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 1)
+        manager.stop()
+
+        manager.pause()
+        manager.skipForward()
+        manager.skipBackward()
+        manager.resetChapter()
+        manager.seek(toProgress: 1)
+        manager.play()
+
+        #expect(manager.isActive == false)
+        #expect(manager.isPlaying == false)
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(synth.spoken == ["B"])
+        #expect(provider.activated == [1])
+    }
+
+    @Test("paragraph controls while paused move the cursor without resuming")
+    func pausedParagraphControlsDoNotResume() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 0)
+        manager.pause()
+
+        manager.skipForward()
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentLocalIndex == 1)
+        #expect(manager.isPlaying == false)
+        #expect(synth.spoken == ["A"])
+        #expect(provider.activated == [0, 1])
+
+        manager.skipBackward()
+        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentLocalIndex == 0)
+        #expect(manager.isPlaying == false)
+        #expect(synth.spoken == ["A"])
+        #expect(provider.activated == [0, 1, 0])
+    }
+
+    @Test("play after paused paragraph navigation speaks the selected paragraph")
+    func playAfterPausedParagraphNavigation() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        manager.start(provider: StubProvider(), chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 0)
+        manager.pause()
+        manager.skipForward()
+
+        manager.play()
+
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentLocalIndex == 1)
+        #expect(synth.spoken == ["A", "B"])
+        #expect(manager.isPlaying)
+    }
+
+    @Test("rate changes while playing restart the same paragraph only")
+    func rateChangeKeepsCursor() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 1)
+
+        manager.rate = manager.rate == AVSpeechUtteranceDefaultSpeechRate * 1.5
+            ? AVSpeechUtteranceDefaultSpeechRate
+            : AVSpeechUtteranceDefaultSpeechRate * 1.5
+
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentLocalIndex == 1)
+        #expect(synth.spoken == ["B", "B"])
+        #expect(provider.activated == [1, 1])
+        #expect(manager.isPlaying)
+    }
+
+    @Test("stale finish after rate restart does not advance the queue")
+    func staleFinishAfterRateRestartDoesNotAdvance() async {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 1)
+        let stoppedUtterance = synth.utterances[0]
+
+        manager.rate = manager.rate == AVSpeechUtteranceDefaultSpeechRate * 1.5
+            ? AVSpeechUtteranceDefaultSpeechRate
+            : AVSpeechUtteranceDefaultSpeechRate * 1.5
+
+        synth.finish(stoppedUtterance)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentLocalIndex == 1)
+        #expect(synth.spoken == ["B", "B"])
+        #expect(provider.activated == [1, 1])
+
+        synth.finish(synth.utterances[1])
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(manager.currentParagraphIndex == 2)
+        #expect(manager.currentLocalIndex == 2)
+        #expect(synth.spoken == ["B", "B", "C"])
+        #expect(provider.activated == [1, 1, 2])
+    }
+
+    @Test("rate changes while paused keep the cursor and paused state")
+    func rateChangeWhilePausedDoesNotResume() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 1)
+        manager.pause()
+
+        manager.rate = manager.rate == AVSpeechUtteranceDefaultSpeechRate * 1.5
+            ? AVSpeechUtteranceDefaultSpeechRate
+            : AVSpeechUtteranceDefaultSpeechRate * 1.5
+
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentLocalIndex == 1)
+        #expect(synth.spoken == ["B"])
+        #expect(provider.activated == [1])
+        #expect(manager.isPlaying == false)
     }
 
     @Test("reattach re-points provider and re-emits the active paragraph")
@@ -148,6 +350,25 @@ private final class StubProvider: TTSChapterProvider {
         #expect(provider.activated == [2, 0])
     }
 
+    @Test("userDidNavigate while paused retargets without resuming")
+    func navWhilePausedDoesNotResume() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 2)
+        manager.pause()
+
+        manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
+
+        #expect(manager.currentChapterKey == "c5")
+        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentLocalIndex == 0)
+        #expect(synth.spoken == ["C"])
+        #expect(provider.activated == [2, 0])
+        #expect(manager.isPlaying == false)
+    }
+
     @Test("userDidNavigate is a no-op when no session is active")
     func navInactive() {
         let synth = MockSynth()
@@ -155,5 +376,105 @@ private final class StubProvider: TTSChapterProvider {
         manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
         #expect(synth.spoken.isEmpty)
         #expect(manager.isActive == false)
+    }
+
+    @Test("userDidNavigate to empty text stops the live session")
+    func navEmptyStops() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        manager.start(provider: StubProvider(), chapterKey: "c1",
+                      text: "A\n\nB", startIndex: 0)
+        manager.userDidNavigate(toChapterKey: "empty", text: " \n\n ")
+        #expect(synth.spoken == ["A"])
+        #expect(manager.isActive == false)
+        #expect(manager.isPlaying == false)
+    }
+
+    @Test("remote next chapter while paused retargets without resuming")
+    func remoteNextWhilePausedDoesNotResume() async {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A", startIndex: 0)
+        manager.pause()
+
+        manager.skipToNextChapter()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(manager.currentChapterKey == "c2")
+        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentLocalIndex == 0)
+        #expect(synth.spoken == ["A"])
+        #expect(provider.activated == [0, 0])
+        #expect(manager.isPlaying == false)
+    }
+
+    @Test("remote previous chapter while paused retargets without resuming")
+    func remotePreviousWhilePausedDoesNotResume() async {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        let provider = StubProvider()
+        provider.previousChapter = (chapterKey: "c0", text: "X\n\nY")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB", startIndex: 0)
+        manager.pause()
+
+        manager.skipToPreviousChapter()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(manager.currentChapterKey == "c0")
+        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentLocalIndex == 0)
+        #expect(synth.spoken == ["A"])
+        #expect(provider.activated == [0, 0])
+        #expect(manager.isPlaying == false)
+    }
+
+    @Test("session exposes observable novel & chapter titles that follow navigation")
+    func sessionTitlesFollowNavigation() {
+        let manager = TTSManager(synthesizer: MockSynth())
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB", startIndex: 0)
+        #expect(manager.novelTitle == "Novel")
+        #expect(manager.currentChapterTitle == "c1")
+        manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY")
+        #expect(manager.currentChapterTitle == "c2")
+    }
+
+    @Test("progress is chapter-local and resets when the chapter changes")
+    func progressIsChapterLocal() {
+        let manager = TTSManager(synthesizer: MockSynth())
+        manager.start(provider: StubProvider(), chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 2)
+        #expect(manager.progress == 1)             // last paragraph of c1
+        manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY\n\nZ")
+        #expect(manager.progress == 0)             // reset at the top of c2
+    }
+
+    @Test("announces the chapter title once when entering each chapter")
+    func announcesChapterTitleOnChange() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        manager.announceChapterTitles = true
+        let provider = StubProvider()              // ttsChapterTitle returns the key
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB", startIndex: 0)
+        #expect(synth.spoken == ["c1. A"])         // title precedes the first paragraph
+        manager.skipForward()
+        #expect(synth.spoken == ["c1. A", "B"])    // no re-announce within the chapter
+        manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY")
+        #expect(synth.spoken == ["c1. A", "B", "c2. X"])  // announced on chapter change
+    }
+
+    @Test("chapter announcement is off by default for the test initializer")
+    func announcementOffByDefault() {
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth)
+        manager.start(provider: StubProvider(), chapterKey: "c1",
+                      text: "A\n\nB", startIndex: 0)
+        #expect(synth.spoken == ["A"])
     }
 }

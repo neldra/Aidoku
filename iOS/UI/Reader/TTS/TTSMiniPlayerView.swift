@@ -7,8 +7,6 @@ import SwiftUI
 
 struct TTSMiniPlayerView: View {
     @ObservedObject var tts = TTSManager.shared
-    let title: String
-    let subtitle: String
     let onTapExpand: () -> Void
 
     var body: some View {
@@ -30,8 +28,8 @@ struct TTSMiniPlayerView: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                Text(subtitle).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+                Text(tts.novelTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(tts.currentChapterTitle).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
 

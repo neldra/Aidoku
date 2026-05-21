@@ -10,10 +10,6 @@ struct TTSPlayerView: View {
     @ObservedObject var tts = TTSManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    let novelTitle: String
-    let chapterTitle: String
-    let coverImage: UIImage?
-
     @AppStorage(TTSManager.highlightKey) private var highlightEnabled = true
     @State private var draftRate: Float?
 
@@ -28,8 +24,8 @@ struct TTSPlayerView: View {
                 VStack(spacing: 20) {
                     coverArt
                     VStack(spacing: 4) {
-                        Text(novelTitle).font(.title3.bold())
-                        Text(chapterTitle).font(.subheadline).foregroundColor(.secondary)
+                        Text(tts.novelTitle).font(.title3.bold())
+                        Text(tts.currentChapterTitle).font(.subheadline).foregroundColor(.secondary)
                     }
 
                     HStack(spacing: 36) {
@@ -75,7 +71,7 @@ struct TTSPlayerView: View {
 
     private var coverArt: some View {
         Group {
-            if let coverImage {
+            if let coverImage = tts.artwork {
                 Image(uiImage: coverImage).resizable().scaledToFill()
             } else {
                 Color(uiColor: .secondarySystemBackground)
@@ -130,6 +126,8 @@ struct TTSPlayerView: View {
                 .tint(.accentColor)
             }
             Toggle("Highlight & auto-scroll", isOn: $highlightEnabled)
+                .tint(.accentColor)
+            Toggle("Announce chapter titles", isOn: $tts.announceChapterTitles)
                 .tint(.accentColor)
         }
         .padding()

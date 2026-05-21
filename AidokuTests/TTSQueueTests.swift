@@ -132,4 +132,31 @@ import Testing
         #expect(empty.firstIndexOfCurrentChapter == 0)
         #expect(empty.lastIndexOfCurrentChapter == 0)
     }
+
+    @Test("chapterProgress is chapter-local and resets across appended chapters")
+    func chapterProgressResets() {
+        var q = TTSQueue(
+            paragraphs: TTSText.paragraphs(chapterKey: "c1", text: "A\n\nB\n\nC"),
+            startIndex: 0
+        )
+        #expect(q.chapterProgress == 0)
+        q.seek(to: 2)
+        #expect(q.chapterProgress == 1)            // end of c1
+        q.appendChapter(TTSText.paragraphs(chapterKey: "c2", text: "X\n\nY\n\nZ"))
+        q.seek(to: 3)                              // first paragraph of c2
+        #expect(q.chapterProgress == 0)            // RESET, not continued
+        q.seek(to: 5)                              // last paragraph of c2
+        #expect(q.chapterProgress == 1)
+    }
+
+    @Test("chapterProgress handles single-paragraph chapter and empty queue")
+    func chapterProgressEdges() {
+        let single = TTSQueue(
+            paragraphs: TTSText.paragraphs(chapterKey: "c1", text: "Only"),
+            startIndex: 0
+        )
+        #expect(single.chapterProgress == 1)
+        let empty = TTSQueue(paragraphs: [], startIndex: 0)
+        #expect(empty.chapterProgress == 0)
+    }
 }

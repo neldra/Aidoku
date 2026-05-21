@@ -10,6 +10,7 @@ import Combine
 import SafariServices
 import SwiftUI
 import AidokuRunner
+import Nuke
 
 class ReaderViewController: BaseObservingViewController {
     enum Reader {
@@ -1083,15 +1084,19 @@ extension ReaderViewController {
             NotificationCenter.default.post(name: .readerShowingBars, object: nil)
 
             UIView.setAnimationsEnabled(false)
-            if #available(iOS 26.0, *) {
-                if navigationController.isToolbarHidden {
-                    (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
-                    navigationController.isToolbarHidden = false
-                }
-            } else {
-                if navigationController.toolbar.isHidden {
-                    navigationController.toolbar.alpha = 0
-                    navigationController.toolbar.isHidden = false
+            // While TTS is active the docked mini-player replaces the bottom
+            // bar; never restore the (empty) page-seeker toolbar here.
+            if self.ttsMiniPlayerController == nil {
+                if #available(iOS 26.0, *) {
+                    if navigationController.isToolbarHidden {
+                        (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
+                        navigationController.isToolbarHidden = false
+                    }
+                } else {
+                    if navigationController.toolbar.isHidden {
+                        navigationController.toolbar.alpha = 0
+                        navigationController.toolbar.isHidden = false
+                    }
                 }
             }
             self.pageDescriptionButtonBottomConstraint.constant = 0
@@ -1252,6 +1257,7 @@ extension ReaderViewController {
         guard let textReader = reader as? ReaderTextViewController else { return }
         if TTSManager.shared.isActive {
             TTSManager.shared.reattach(provider: textReader)
+            loadTTSArtwork()
             showTTSMiniPlayer()
             presentTTSSheet()
             return
@@ -1263,16 +1269,27 @@ extension ReaderViewController {
             text: text,
             startIndex: textReader.nearestParagraphIndex
         )
+        loadTTSArtwork()
         showTTSMiniPlayer()
     }
 
+    /// Load the series cover once per session and hand it to the session so
+    /// the player sheet and the lock-screen Now Playing entry both show art.
+    private func loadTTSArtwork() {
+        guard TTSManager.shared.artwork == nil,
+              let coverString = manga.cover,
+              let url = URL(string: coverString)
+        else { return }
+        Task {
+            let resolved = url.toAidokuFileUrl() ?? url
+            if let image = try? await ImagePipeline.shared.image(for: resolved) {
+                await MainActor.run { TTSManager.shared.artwork = image }
+            }
+        }
+    }
+
     private func presentTTSSheet() {
-        let view = TTSPlayerView(
-            novelTitle: manga.title,
-            chapterTitle: chapter.title ?? (chapter.chapterNumber.map { "Chapter \(String(format: "%g", Double($0)))" } ?? ""),
-            coverImage: nil
-        )
-        let vc = UIHostingController(rootView: view)
+        let vc = UIHostingController(rootView: TTSPlayerView())
         if let sheet = vc.sheetPresentationController {
             sheet.detents = [.large()]
             sheet.prefersGrabberVisible = true
@@ -1283,8 +1300,6 @@ extension ReaderViewController {
     private func showTTSMiniPlayer() {
         guard ttsMiniPlayerController == nil else { return }
         let view = TTSMiniPlayerView(
-            title: manga.title,
-            subtitle: chapter.title ?? "",
             onTapExpand: { [weak self] in self?.presentTTSSheet() }
         )
         let host = UIHostingController(rootView: view)
@@ -1318,11 +1333,27 @@ extension ReaderViewController {
         ).height + self.view.safeAreaInsets.bottom
         (reader as? ReaderTextViewController)?.setTTSBottomReservation(stripHeight)
         toolbarView.isHidden = true
+        // Remove the whole bottom bar, not just its content, so it can't come
+        // back empty when bars are toggled (the mini-player stands in for it).
+        if #available(iOS 26.0, *) {
+            navigationController?.isToolbarHidden = true
+        } else {
+            navigationController?.toolbar.isHidden = true
+        }
     }
 
     private func hideTTSMiniPlayer() {
         (reader as? ReaderTextViewController)?.setTTSBottomReservation(0)
         toolbarView.isHidden = false
+        // Restore the bottom bar only if bars are currently visible; if the
+        // user has bars hidden, the next showBars() brings it back normally.
+        if navigationController?.navigationBar.isHidden == false {
+            if #available(iOS 26.0, *) {
+                navigationController?.isToolbarHidden = false
+            } else {
+                navigationController?.toolbar.isHidden = false
+            }
+        }
         ttsMiniPlayerController?.willMove(toParent: nil)
         ttsMiniPlayerController?.view.removeFromSuperview()
         ttsMiniPlayerController?.removeFromParent()

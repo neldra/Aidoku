@@ -44,6 +44,18 @@ struct TTSQueue {
         return Double(index) / Double(paragraphs.count - 1)
     }
 
+    /// Progress within the current paragraph's *own* chapter (0...1),
+    /// independent of any other chapters appended to the queue. Resets to 0
+    /// at the first paragraph of each chapter so a cross-chapter rollover or
+    /// user navigation does not keep accumulating.
+    var chapterProgress: Double {
+        guard !paragraphs.isEmpty else { return 0 }
+        let first = firstIndexOfCurrentChapter
+        let last = lastIndexOfCurrentChapter
+        guard last > first else { return 1 }
+        return Double(index - first) / Double(last - first)
+    }
+
     @discardableResult
     mutating func advance() -> TTSParagraph? {
         guard index < paragraphs.count - 1 else { return nil }

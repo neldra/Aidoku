@@ -47,6 +47,7 @@ class ReaderTextViewController: BaseViewController {
     private var estimatedPageCount = 1
     private var pendingScrollRestore = false
     private var isReportingProgress = false
+    private var isTTSAutoScrolling = false
     private var lastReportedPage = 0
     private var needsPageCountUpdate = false
 
@@ -736,6 +737,19 @@ extension ReaderTextViewController {
         }
     }
 
+    private var ttsVisibleContentTop: CGFloat {
+        scrollView.contentOffset.y + scrollView.contentInset.top
+    }
+
+    private var ttsUnobstructedHeight: CGFloat {
+        max(1, scrollView.frame.height - scrollView.contentInset.top - scrollView.contentInset.bottom)
+    }
+
+    private var ttsMaximumContentOffsetY: CGFloat {
+        max(-scrollView.contentInset.top,
+            scrollView.contentSize.height - scrollView.frame.height + scrollView.contentInset.bottom)
+    }
+
     // MARK: - Infinite Scroll: Prepend Previous Chapter
 
     private func prependPreviousChapter() {
@@ -829,14 +843,16 @@ extension ReaderTextViewController {
     // MARK: - Chapter Switch Detection
 
     /// Update the "current chapter" when the user scrolls into a different section.
-    private func updateCurrentChapterFromScroll() {
+    private func updateCurrentChapterFromScroll(retargetTTS: Bool = true) {
         guard let index = currentSectionIndex else { return }
         let sectionChapter = sections[index].chapter
         guard sectionChapter != chapter else { return }
 
         chapter = sectionChapter
         delegate?.setChapter(sectionChapter)
-        retargetTTSIfNeeded(to: sectionChapter, pages: sections[index].pages)
+        if retargetTTS {
+            retargetTTSIfNeeded(to: sectionChapter, pages: sections[index].pages)
+        }
 
         // Refresh navigation pointers
         previousChapter = delegate?.getPreviousChapter()
@@ -942,11 +958,15 @@ extension ReaderTextViewController: ReaderReaderDelegate {
 
 // MARK: - Scroll View Delegate
 extension ReaderTextViewController: UIScrollViewDelegate {
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        isTTSAutoScrolling = false
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard !isSliding, !pendingScrollRestore, !isReportingProgress else { return }
 
         // Detect if current chapter changed due to scrolling
-        updateCurrentChapterFromScroll()
+        updateCurrentChapterFromScroll(retargetTTS: !isTTSAutoScrolling)
 
         guard let index = currentSectionIndex else { return }
         let startY = sectionContentStartY(at: index)
@@ -986,6 +1006,11 @@ extension ReaderTextViewController: UIScrollViewDelegate {
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        if isTTSAutoScrolling {
+            isTTSAutoScrolling = false
+            updateCurrentChapterFromScroll(retargetTTS: false)
+            return
+        }
         checkInfiniteLoad()
     }
 
@@ -1024,8 +1049,7 @@ extension ReaderTextViewController: TTSChapterProvider {
         guard let sectionIndex = currentSectionIndex else { return 0 }
         let key = sections[sectionIndex].chapter.key
         guard let frames = ttsParagraphFrames[key], !frames.isEmpty else { return 0 }
-        let visibleTop = scrollView.contentOffset.y
-        let localTop = visibleTop - sectionContentStartY(at: sectionIndex)
+        let localTop = ttsVisibleContentTop - sectionContentStartY(at: sectionIndex)
         let ordered = frames.sorted { $0.key < $1.key }
         let firstVisible = ordered.first(where: { $0.value.maxY > localTop })?.key
         return firstVisible ?? ordered.last?.key ?? 0
@@ -1041,10 +1065,18 @@ extension ReaderTextViewController: TTSChapterProvider {
     var ttsNovelTitle: String { viewModel.manga.title }
 
     func ttsChapterTitle(forKey key: String) -> String {
-        if let ch = sections.first(where: { $0.chapter.key == key })?.chapter {
-            return ch.title ?? (ch.chapterNumber.map { "Chapter \(String(format: "%g", Double($0)))" } ?? "")
-        }
-        return ""
+        // Resolve from the full known chapter list, not just rendered
+        // sections: on a cross-chapter TTS rollover the queue enters the new
+        // chapter before the reader has asynchronously rendered its section,
+        // so a sections-only lookup would return "" until the next paragraph.
+        let resolved = sections.first(where: { $0.chapter.key == key })?.chapter
+            ?? viewModel.manga.chapters?.first(where: { $0.key == key })
+            ?? [chapter, nextChapter, previousChapter]
+                .compactMap { $0 }
+                .first(where: { $0.key == key })
+        guard let resolved else { return "" }
+        return resolved.title
+            ?? (resolved.chapterNumber.map { "Chapter \(String(format: "%g", Double($0)))" } ?? "")
     }
 
     var ttsArtwork: UIImage? { nil } // supplied by ReaderViewController instead
@@ -1111,11 +1143,12 @@ extension ReaderTextViewController: TTSChapterProvider {
             let frame = ttsParagraphFrames[chapterKey]?[index]
         else { return }
         let sectionStartY = sectionContentStartY(at: sectionIndex)
-        let unobstructedHeight = scrollView.frame.height - scrollView.contentInset.bottom
-        let target = sectionStartY + frame.minY - unobstructedHeight / 3
-        let maxOffset = max(0, scrollView.contentSize.height - scrollView.frame.height)
+        let target = sectionStartY + frame.minY - scrollView.contentInset.top - ttsUnobstructedHeight / 3
+        let targetY = min(max(-scrollView.contentInset.top, target), ttsMaximumContentOffsetY)
+        guard abs(scrollView.contentOffset.y - targetY) > 0.5 else { return }
+        isTTSAutoScrolling = true
         scrollView.setContentOffset(
-            CGPoint(x: 0, y: min(max(0, target), maxOffset)),
+            CGPoint(x: 0, y: targetY),
             animated: true
         )
     }
