@@ -60,32 +60,16 @@ final class TTSManager: NSObject, ObservableObject {
     }
     @Published var voiceIdentifier: String {
         didSet {
+            guard oldValue != voiceIdentifier else { return }
             UserDefaults.standard.set(voiceIdentifier, forKey: Self.voiceKey)
-            if oldValue != voiceIdentifier {
-                // Voice change invalidates the WPM observation history —
-                // the next utterance's pacing belongs to a different voice.
-                calibrator.reset(forVoice: voiceIdentifier)
-                restartCurrent()
-                // Reset to baseline WPM shifts the projected duration; the
-                // lockscreen needs to see the new numbers immediately, not
-                // wait for the next speakCurrent (which may not fire if
-                // we're paused).
-                updateNowPlaying()
-            }
+            applyConfigChange(resetCalibration: true)
         }
     }
     @Published var rate: Float {
         didSet {
+            guard oldValue != rate else { return }
             UserDefaults.standard.set(rate, forKey: Self.rateKey)
-            if oldValue != rate {
-                restartCurrent()
-                // Position is unchanged but rate is — chapter duration and
-                // elapsed projection both shift. Push to MPNowPlayingInfoCenter
-                // now so the lockscreen scrub bar shows the new bounds even
-                // while paused (restartCurrent's paused branch doesn't speak
-                // and therefore doesn't trigger an updateNowPlaying).
-                updateNowPlaying()
-            }
+            applyConfigChange(resetCalibration: false)
         }
     }
 
@@ -198,37 +182,23 @@ final class TTSManager: NSObject, ObservableObject {
         updateNowPlaying()
     }
 
-    func skipForward() {
-        guard isActive else { return }
-        let shouldContinuePlaying = isPlaying
-        guard queue.advance() != nil else { return }
-        sessionRevision &+= 1
-        activateCurrent(playing: shouldContinuePlaying)
-    }
-
-    func skipBackward() {
-        guard isActive else { return }
-        let shouldContinuePlaying = isPlaying
-        guard queue.rewind() != nil else { return }
-        sessionRevision &+= 1
-        activateCurrent(playing: shouldContinuePlaying)
-    }
+    func skipForward()  { performQueueMutation { queue.advance() != nil } }
+    func skipBackward() { performQueueMutation { queue.rewind() != nil } }
 
     func seek(toProgress fraction: Double) {
-        guard isActive, queue.count > 0 else { return }
-        let shouldContinuePlaying = isPlaying
-        sessionRevision &+= 1
-        queue.seek(to: Int((fraction * Double(queue.count - 1)).rounded()))
-        activateCurrent(playing: shouldContinuePlaying)
+        performQueueMutation {
+            guard queue.count > 0 else { return false }
+            queue.seek(to: Int((fraction * Double(queue.count - 1)).rounded()))
+            return true
+        }
     }
 
     /// Restart the current chapter from its first paragraph.
     func resetChapter() {
-        guard isActive else { return }
-        let shouldContinuePlaying = isPlaying
-        sessionRevision &+= 1
-        queue.seek(to: queue.firstIndexOfCurrentChapter)
-        activateCurrent(playing: shouldContinuePlaying)
+        performQueueMutation {
+            queue.seek(to: queue.firstIndexOfCurrentChapter)
+            return true
+        }
     }
 
     func stop() {
@@ -418,15 +388,14 @@ final class TTSManager: NSObject, ObservableObject {
     /// can't restart inside an existing utterance, so the workaround is to
     /// stop and re-issue with the remaining substring (spec §7.1).
     func seek(to position: TextChapterPosition) {
-        guard isActive, queue.count > 0 else { return }
-        let first = queue.firstIndexOfCurrentChapter
-        let last = queue.lastIndexOfCurrentChapter
-        let absolute = min(max(first, first + position.paragraphIndex), last)
-        let shouldContinuePlaying = isPlaying
-        sessionRevision &+= 1
-        queue.seek(to: absolute)
-        pendingCharOffset = max(0, position.charOffsetInParagraph)
-        activateCurrent(playing: shouldContinuePlaying)
+        performQueueMutation {
+            guard queue.count > 0 else { return false }
+            let first = queue.firstIndexOfCurrentChapter
+            let last = queue.lastIndexOfCurrentChapter
+            queue.seek(to: min(max(first, first + position.paragraphIndex), last))
+            pendingCharOffset = max(0, position.charOffsetInParagraph)
+            return true
+        }
     }
 
     /// Apply a ±N-second offset to the current elapsed time and seek to the
@@ -468,6 +437,28 @@ final class TTSManager: NSObject, ObservableObject {
     ///   on the stale utterance, which retains the old rate)
     /// Inactive / between-utterance states need no action — the next
     /// `speakCurrent()` reads the current rate/voice naturally.
+    /// Run a queue mutation inside the standard "snapshot play-state →
+    /// mutate → bump session revision → activate" envelope. Mutation
+    /// returns false to abort (e.g., `advance()` past the end of the queue
+    /// or `seek` on an empty queue).
+    private func performQueueMutation(_ mutate: () -> Bool) {
+        guard isActive else { return }
+        let shouldContinuePlaying = isPlaying
+        guard mutate() else { return }
+        sessionRevision &+= 1
+        activateCurrent(playing: shouldContinuePlaying)
+    }
+
+    /// Shared body of `voiceIdentifier.didSet` and `rate.didSet`:
+    /// optionally reset per-voice calibration, restart the current
+    /// utterance (no-op when inactive), and refresh Now Playing so the
+    /// lockscreen scrub bar reflects the new pacing even while paused.
+    private func applyConfigChange(resetCalibration: Bool) {
+        if resetCalibration { calibrator.reset(forVoice: voiceIdentifier) }
+        restartCurrent()
+        updateNowPlaying()
+    }
+
     private func restartCurrent() {
         guard isActive else { return }
         if synthesizer.isPaused {
