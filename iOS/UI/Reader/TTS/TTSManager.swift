@@ -94,6 +94,15 @@ final class TTSManager: NSObject, ObservableObject {
     /// `speakCurrent`. Without it the synthesizer would restart the paragraph
     /// from the top instead of at the requested offset.
     private var pendingCharOffset: Int = 0
+    /// Character offset at which the current utterance started, surfaced via
+    /// `currentPosition` so the lockscreen scrub bar reports the real
+    /// position after a mid-paragraph seek. Set when `speakCurrent` consumes
+    /// `pendingCharOffset`; reset to 0 on the next utterance (which always
+    /// begins from offset 0 unless another seek lands first).
+    private var activeCharOffset: Int = 0
+    /// AVAudioSession interruption observer (phone call, Siri, AirPods press
+    /// in some routings). Kept alive for the singleton's lifetime.
+    private var interruptionObserver: NSObjectProtocol?
 
     /// Chapter-local (0...1); resets to 0 each time the active chapter
     /// changes so progress doesn't accumulate across the appended queue.
@@ -101,12 +110,14 @@ final class TTSManager: NSObject, ObservableObject {
     var currentChapterKey: String? { queue.current?.chapterKey }
 
     /// Position of the narration cursor inside `currentNormalizedChapter`.
-    /// `charOffsetInParagraph` is always 0 until `willSpeakRangeOfSpeechString`
-    /// is wired — paragraph-granular is the best precision available today.
+    /// `charOffsetInParagraph` reflects the start of the active utterance, so
+    /// a mid-paragraph seek shows up immediately in elapsed/duration. Within
+    /// a single utterance the offset doesn't tick — `willSpeakRangeOfSpeechString`
+    /// would be needed for word-by-word precision.
     var currentPosition: TextChapterPosition {
         TextChapterPosition(
             paragraphIndex: queue.localIndexInCurrentChapter,
-            charOffsetInParagraph: 0
+            charOffsetInParagraph: activeCharOffset
         )
     }
 
@@ -121,6 +132,7 @@ final class TTSManager: NSObject, ObservableObject {
         super.init()
         self.synthesizer.speechDelegate = self
         self.calibrator.reset(forVoice: voiceIdentifier)
+        self.registerInterruptionObserver()
     }
 
     // MARK: - Lifecycle
@@ -201,8 +213,11 @@ final class TTSManager: NSObject, ObservableObject {
         currentChapterTitle = ""
         lastAnnouncedChapterKey = nil
         pendingCharOffset = 0
+        activeCharOffset = 0
         deactivateAudioSession()
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = nil
+        center.playbackState = .stopped
     }
 
     #if DEBUG
@@ -223,10 +238,47 @@ final class TTSManager: NSObject, ObservableObject {
             .setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    /// Register once for the lifetime of the singleton. The handler is a
+    /// no-op when no session is active.
+    private func registerInterruptionObserver() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: nil
+        ) { [weak self] note in
+            Task { @MainActor [weak self] in
+                self?.handleInterruption(note)
+            }
+        }
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard isActive,
+              let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        switch type {
+        case .began:
+            pause()
+        case .ended:
+            // iOS hints whether the interruption source wants us to resume
+            // (e.g. ended Siri prompt) versus stay paused (e.g. ended call).
+            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt,
+               AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) {
+                play()
+            }
+        @unknown default:
+            break
+        }
+    }
+
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.removeTarget(nil)
         center.pauseCommand.removeTarget(nil)
+        center.togglePlayPauseCommand.removeTarget(nil)
         center.nextTrackCommand.removeTarget(nil)
         center.previousTrackCommand.removeTarget(nil)
         center.skipForwardCommand.removeTarget(nil)
@@ -235,6 +287,10 @@ final class TTSManager: NSObject, ObservableObject {
 
         center.playCommand.isEnabled = true
         center.pauseCommand.isEnabled = true
+        // AirPods single-press fires this directly; iOS's auto-routing of
+        // toggle → play/pause based on playbackRate is unreliable across
+        // versions. Owning the dispatch keeps our state in sync.
+        center.togglePlayPauseCommand.isEnabled = true
         center.nextTrackCommand.isEnabled = true
         center.previousTrackCommand.isEnabled = true
         center.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
@@ -248,6 +304,9 @@ final class TTSManager: NSObject, ObservableObject {
         }
         center.pauseCommand.addTarget { [weak self] _ in
             self?.pause(); return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.togglePlayPause(); return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
             self?.skipToNextChapter(); return .success
@@ -313,7 +372,13 @@ final class TTSManager: NSObject, ObservableObject {
         if let elapsed = estimate.chapterElapsedSec {
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
         }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        // Explicit state signal — iOS otherwise infers from playbackRate and
+        // often skips redrawing the lockscreen scrub/metadata when rate is
+        // already 0, so paused-state skips don't visibly move the cursor
+        // until the user resumes.
+        center.playbackState = isPlaying ? .playing : .paused
     }
 
     /// Speech rate as a multiplier of normal pace
@@ -491,6 +556,7 @@ final class TTSManager: NSObject, ObservableObject {
         let fullText = paragraph.spokenText
         let offset = pendingCharOffset
         pendingCharOffset = 0
+        activeCharOffset = (offset > 0 && offset < fullText.count) ? offset : 0
         var textToSpeak = (offset > 0 && offset < fullText.count)
             ? Self.substring(of: fullText, fromOffsetSnappedToWordBoundary: offset)
             : fullText
