@@ -55,9 +55,8 @@ class ReaderViewController: BaseObservingViewController {
     private var toolbarViewWidthConstraint: NSLayoutConstraint?
 
     private var ttsBarButton: UIBarButtonItem?
-    private var ttsMiniPlayerController: UIHostingController<TTSMiniPlayerView>?
-    private var ttsMiniPlayerBottomConstraint: NSLayoutConstraint?
-    private var ttsDeactivationCancellable: AnyCancellable?
+    private var ttsButton: UIButton?
+    private var ttsStateCancellable: AnyCancellable?
 
     private var squeezeTimer: Timer?
     private var longSqueezeTimer: Timer?
@@ -156,13 +155,17 @@ class ReaderViewController: BaseObservingViewController {
             action: #selector(openWebView)
         )
         moreButton.isEnabled = chapter.url != nil
-        ttsBarButton = UIBarButtonItem(
-            image: UIImage(systemName: "headphones"),
-            style: .plain,
+        let ttsButton = UIButton(type: .system)
+        ttsButton.setImage(UIImage(systemName: "headphones"), for: .normal)
+        ttsButton.addTarget(self, action: #selector(toggleTTS), for: .touchUpInside)
+        let ttsLongPress = UILongPressGestureRecognizer(
             target: self,
-            action: #selector(toggleTTS)
+            action: #selector(handleTTSLongPress(_:))
         )
-        ttsBarButton?.isEnabled = false
+        ttsButton.addGestureRecognizer(ttsLongPress)
+        ttsButton.isEnabled = false
+        self.ttsButton = ttsButton
+        ttsBarButton = UIBarButtonItem(customView: ttsButton)
         navigationItem.rightBarButtonItems = [
             moreButton,
             UIBarButtonItem(
@@ -173,6 +176,15 @@ class ReaderViewController: BaseObservingViewController {
             ),
             ttsBarButton!
         ]
+
+        // Drive the button icon from live TTS state so the headphone glyph
+        // becomes a pause/play affordance as soon as a session starts.
+        ttsStateCancellable = TTSManager.shared.$isActive
+            .combineLatest(TTSManager.shared.$isPlaying)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active, playing in
+                self?.updateTTSButtonIcon(active: active, playing: playing)
+            }
 
         // fix navbar being clear
         let navigationBarAppearance = UINavigationBarAppearance()
@@ -678,7 +690,7 @@ extension ReaderViewController {
         }
         reader?.readingMode = readingMode
         disableSwipeGestures()
-        ttsBarButton?.isEnabled = reader is ReaderTextViewController
+        ttsButton?.isEnabled = reader is ReaderTextViewController
     }
 }
 
@@ -1084,19 +1096,15 @@ extension ReaderViewController {
             NotificationCenter.default.post(name: .readerShowingBars, object: nil)
 
             UIView.setAnimationsEnabled(false)
-            // While TTS is active the docked mini-player replaces the bottom
-            // bar; never restore the (empty) page-seeker toolbar here.
-            if self.ttsMiniPlayerController == nil {
-                if #available(iOS 26.0, *) {
-                    if navigationController.isToolbarHidden {
-                        (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
-                        navigationController.isToolbarHidden = false
-                    }
-                } else {
-                    if navigationController.toolbar.isHidden {
-                        navigationController.toolbar.alpha = 0
-                        navigationController.toolbar.isHidden = false
-                    }
+            if #available(iOS 26.0, *) {
+                if navigationController.isToolbarHidden {
+                    (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
+                    navigationController.isToolbarHidden = false
+                }
+            } else {
+                if navigationController.toolbar.isHidden {
+                    navigationController.toolbar.alpha = 0
+                    navigationController.toolbar.isHidden = false
                 }
             }
             self.pageDescriptionButtonBottomConstraint.constant = 0
@@ -1253,13 +1261,15 @@ extension ReaderViewController {
 // MARK: - TTS
 
 extension ReaderViewController {
+    /// Tap on the toolbar headphone button. Three cases:
+    /// - inactive: start a session from the reader's nearest paragraph
+    /// - active + playing: pause
+    /// - active + paused: resume
     @objc func toggleTTS() {
         guard let textReader = reader as? ReaderTextViewController else { return }
         if TTSManager.shared.isActive {
             TTSManager.shared.reattach(provider: textReader)
-            loadTTSArtwork()
-            showTTSMiniPlayer()
-            presentTTSSheet()
+            TTSManager.shared.togglePlayPause()
             return
         }
         guard let (key, text) = textReader.currentChapterText else { return }
@@ -1270,11 +1280,38 @@ extension ReaderViewController {
             startIndex: textReader.nearestParagraphIndex
         )
         loadTTSArtwork()
-        showTTSMiniPlayer()
     }
 
-    /// Load the series cover once per session and hand it to the session so
-    /// the player sheet and the lock-screen Now Playing entry both show art.
+    /// Long-press on the toolbar headphone button: stop the engine entirely,
+    /// tearing down the audio session and clearing Now Playing. Distinct from
+    /// pause, which leaves the lock-screen player armed for quick resume.
+    @objc func handleTTSLongPress(_ gr: UILongPressGestureRecognizer) {
+        guard gr.state == .began, TTSManager.shared.isActive else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        TTSManager.shared.stop()
+    }
+
+    /// Headphone glyph when stopped; pause when playing; play when paused.
+    /// Driven by a Combine subscription on TTSManager.$isActive × $isPlaying.
+    private func updateTTSButtonIcon(active: Bool, playing: Bool) {
+        let symbolName: String
+        let label: String
+        if !active {
+            symbolName = "headphones"
+            label = NSLocalizedString("TTS_START", comment: "")
+        } else if playing {
+            symbolName = "pause.circle.fill"
+            label = NSLocalizedString("TTS_PAUSE", comment: "")
+        } else {
+            symbolName = "play.circle.fill"
+            label = NSLocalizedString("TTS_RESUME", comment: "")
+        }
+        ttsButton?.setImage(UIImage(systemName: symbolName), for: .normal)
+        ttsButton?.accessibilityLabel = label
+    }
+
+    /// Load the series cover once per session and hand it to the engine so
+    /// the lock-screen Now Playing entry shows art.
     private func loadTTSArtwork() {
         guard TTSManager.shared.artwork == nil,
               let coverString = manga.cover,
@@ -1286,78 +1323,5 @@ extension ReaderViewController {
                 await MainActor.run { TTSManager.shared.artwork = image }
             }
         }
-    }
-
-    private func presentTTSSheet() {
-        let vc = UIHostingController(rootView: TTSPlayerView())
-        if let sheet = vc.sheetPresentationController {
-            sheet.detents = [.large()]
-            sheet.prefersGrabberVisible = true
-        }
-        present(vc, animated: true)
-    }
-
-    private func showTTSMiniPlayer() {
-        guard ttsMiniPlayerController == nil else { return }
-        let view = TTSMiniPlayerView(
-            onTapExpand: { [weak self] in self?.presentTTSSheet() }
-        )
-        let host = UIHostingController(rootView: view)
-        host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        addChild(host)
-        self.view.addSubview(host.view)
-        host.didMove(toParent: self)
-        let bottom = host.view.bottomAnchor.constraint(
-            equalTo: self.view.safeAreaLayoutGuide.bottomAnchor,
-            constant: 0
-        )
-        NSLayoutConstraint.activate([
-            host.view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
-            bottom
-        ])
-        ttsMiniPlayerController = host
-        ttsMiniPlayerBottomConstraint = bottom
-
-        // Hide the mini-player when TTS deactivates.
-        ttsDeactivationCancellable = TTSManager.shared.$isActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] active in
-                if !active { self?.hideTTSMiniPlayer() }
-            }
-
-        host.view.layoutIfNeeded()
-        let stripHeight = host.view.systemLayoutSizeFitting(
-            UIView.layoutFittingCompressedSize
-        ).height + self.view.safeAreaInsets.bottom
-        (reader as? ReaderTextViewController)?.setTTSBottomReservation(stripHeight)
-        toolbarView.isHidden = true
-        // Remove the whole bottom bar, not just its content, so it can't come
-        // back empty when bars are toggled (the mini-player stands in for it).
-        if #available(iOS 26.0, *) {
-            navigationController?.isToolbarHidden = true
-        } else {
-            navigationController?.toolbar.isHidden = true
-        }
-    }
-
-    private func hideTTSMiniPlayer() {
-        (reader as? ReaderTextViewController)?.setTTSBottomReservation(0)
-        toolbarView.isHidden = false
-        // Restore the bottom bar only if bars are currently visible; if the
-        // user has bars hidden, the next showBars() brings it back normally.
-        if navigationController?.navigationBar.isHidden == false {
-            if #available(iOS 26.0, *) {
-                navigationController?.isToolbarHidden = false
-            } else {
-                navigationController?.toolbar.isHidden = false
-            }
-        }
-        ttsMiniPlayerController?.willMove(toParent: nil)
-        ttsMiniPlayerController?.view.removeFromSuperview()
-        ttsMiniPlayerController?.removeFromParent()
-        ttsMiniPlayerController = nil
-        ttsDeactivationCancellable = nil
     }
 }

@@ -5,6 +5,7 @@
 //  Created by Skitty on 6/30/25.
 //
 
+import AVFoundation
 import SwiftUI
 
 struct ReaderSettingsView: View {
@@ -245,6 +246,8 @@ struct ReaderSettingsView: View {
                             )
                         )
                     }
+
+                    TTSReaderSettingsSection()
                 } else {
                     if !downsampleImages.value {
                         Section {
@@ -398,6 +401,67 @@ struct ReaderSettingsView: View {
             .onReceive(NotificationCenter.default.publisher(for: .readerTapZones)) { _ in
                 tapZones = UserDefaults.standard.string(forKey: "Reader.tapZones").flatMap(DefaultTapZones.init) ?? .disabled
             }
+        }
+    }
+}
+
+/// TTS voice + rate controls. Lives alongside font/theme settings so the
+/// in-app audio surface is just the toolbar headphone button — everything
+/// configurable about playback is set here (or via lockscreen during a session).
+private struct TTSReaderSettingsSection: View {
+    @ObservedObject private var tts = TTSManager.shared
+
+    /// Local draft while the user drags the slider. Mirrors the pattern in the
+    /// removed TTSPlayerView: rate changes restart the current utterance, so we
+    /// only commit on slider release rather than on every value tick.
+    @State private var draftRate: Float?
+
+    /// Snapshot voices once per sheet presentation. The list changes on the
+    /// order of OS voice downloads, which is rare enough that a re-render
+    /// every settings open is fine.
+    private static let voices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice
+        .speechVoices()
+        .sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+
+    private var currentRate: Float { draftRate ?? tts.rate }
+    private var rateMultiplier: Float {
+        guard AVSpeechUtteranceDefaultSpeechRate > 0 else { return 1 }
+        return currentRate / AVSpeechUtteranceDefaultSpeechRate
+    }
+
+    var body: some View {
+        Section(NSLocalizedString("TEXT_TO_SPEECH")) {
+            Picker(NSLocalizedString("TTS_VOICE"), selection: $tts.voiceIdentifier) {
+                ForEach(Self.voices, id: \.identifier) { voice in
+                    Text("\(voice.name) (\(voice.language))")
+                        .tag(voice.identifier)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(NSLocalizedString("TTS_SPEECH_RATE"))
+                    Spacer()
+                    Text(String(format: "%.1fx", rateMultiplier))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(
+                    value: Binding(
+                        get: { currentRate },
+                        set: { draftRate = $0 }
+                    ),
+                    in: (AVSpeechUtteranceDefaultSpeechRate * 0.5)...(AVSpeechUtteranceDefaultSpeechRate * 2.0),
+                    onEditingChanged: { editing in
+                        if !editing, let rate = draftRate {
+                            tts.rate = rate
+                            draftRate = nil
+                        }
+                    }
+                )
+            }
+
+            Toggle(NSLocalizedString("TTS_ANNOUNCE_CHAPTER_TITLES"), isOn: $tts.announceChapterTitles)
         }
     }
 }

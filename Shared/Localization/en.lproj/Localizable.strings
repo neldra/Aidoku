@@ -559,6 +559,15 @@
 "TEXT_LINE_SPACING" = "Line Spacing";
 "TEXT_HORIZONTAL_PADDING" = "Horizontal Padding";
 
+// Text-to-Speech
+"TEXT_TO_SPEECH" = "Text-to-Speech";
+"TTS_VOICE" = "Voice";
+"TTS_SPEECH_RATE" = "Speech Rate";
+"TTS_ANNOUNCE_CHAPTER_TITLES" = "Announce Chapter Titles";
+"TTS_START" = "Start listening";
+"TTS_PAUSE" = "Pause listening";
+"TTS_RESUME" = "Resume listening";
+
 // Backups
 "BACKUPS" = "Backups";
 "BACKUP_NAME" = "Backup Name";

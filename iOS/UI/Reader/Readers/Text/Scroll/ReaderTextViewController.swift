@@ -57,9 +57,6 @@ class ReaderTextViewController: BaseViewController {
     /// When true, suppresses hosting controller size invalidation to prevent
     /// layout passes from undoing offset compensation during bar transitions.
     private var isSafeAreaTransitioning = false
-    /// Extra bottom space reserved for the docked TTS mini-player, preserved
-    /// across safe-area changes so a mid-session inset reset doesn't wipe it.
-    private var ttsReservationBottom: CGFloat = 0
     /// Latest per-paragraph frames (chapter-local index → rect in the
     /// "ttsReaderContent" space), keyed by chapter key, fed by ReaderTextView.
     private var ttsParagraphFrames: [String: [Int: CGRect]] = [:]
@@ -385,7 +382,7 @@ class ReaderTextViewController: BaseViewController {
 
         // Keep content inset in sync so the scroll view allows scrolling
         // past the content top (text starts below the navigation bar).
-        scrollView.contentInset = UIEdgeInsets(top: newInsets.top, left: 0, bottom: newInsets.bottom + ttsReservationBottom, right: 0)
+        scrollView.contentInset = UIEdgeInsets(top: newInsets.top, left: 0, bottom: newInsets.bottom, right: 0)
         scrollView.verticalScrollIndicatorInsets = scrollView.contentInset
 
         guard let lastInsets = lastSafeAreaInsets else { return }
@@ -1108,16 +1105,6 @@ extension ReaderTextViewController: TTSChapterProvider {
             return nil
         }
         return (prevCh.key, text)
-    }
-
-    /// Reserve space at the bottom for the docked TTS mini-player so text is
-    /// never drawn under it, and hide the page-seeker while listening.
-    /// (This controller has no in-reader page-seeker view; the seeker lives in
-    /// the parent's `ReaderToolbarView`, so only the inset is applied here.)
-    func setTTSBottomReservation(_ height: CGFloat) {
-        ttsReservationBottom = max(0, height)
-        scrollView.contentInset.bottom = view.safeAreaInsets.bottom + ttsReservationBottom
-        scrollView.verticalScrollIndicatorInsets.bottom = view.safeAreaInsets.bottom + ttsReservationBottom
     }
 
     func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {

@@ -41,13 +41,11 @@
 		FB0051262FAF0574004B4A6F /* MigrateResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0051252FAF056E004B4A6F /* MigrateResultsView.swift */; };
 		FB0051282FB7F926004B4A6F /* MigrateSingleSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0051272FB7F91E004B4A6F /* MigrateSingleSearchView.swift */; };
 		FB0051422FB970FF004B4A6F /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0051412FB970FD004B4A6F /* SafariView.swift */; };
-		860A8C4592B03B5E5B1BF8EE /* TTSPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F402AE5328129DDF22F8BAA /* TTSPlayerView.swift */; };
 		8D1A4A75BA0AC41852EDF369 /* TTSText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8442497880F1DE904C7FF68C /* TTSText.swift */; };
 		8D8F491F92C6F060E9D73336 /* TTSQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9347BA9833359968D5B48F /* TTSQueue.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* TextChapterPosition.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F1A2 /* TextChapterPosition.swift */; };
 		A2B3C4D5E6F7A8B9C0D1E2F3 /* WPMCalibrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* WPMCalibrator.swift */; };
 		C1D2E3F4A5B6C7D8E9F0A1B2 /* NormalizedTextChapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E8F9A0B1C2 /* NormalizedTextChapter.swift */; };
-		C757CFC69BE490E20BC08845 /* TTSMiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780FC2B5563CA9CE6085A472 /* TTSMiniPlayerView.swift */; };
 		E1F2A3B4C5D6E7F8A9B0C1D2 /* TTSEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* TTSEstimator.swift */; };
 		FB02E1EB288CC1DA00B9E2DE /* LibraryViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1EA288CC1DA00B9E2DE /* LibraryViewController.swift */; };
 		FB02E1F2288D7BE900B9E2DE /* MangaGridCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB02E1F1288D7BE900B9E2DE /* MangaGridCell.swift */; };
@@ -626,11 +624,9 @@
 		4875B8242BA6F2C3001E39CA /* MangaUpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MangaUpdateManager.swift; sourceTree = "<group>"; };
 		48E20A262B78420E00BFFED8 /* NavigationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationController.swift; sourceTree = "<group>"; };
 		66C7E95A2ED77BB50026FD6C /* ImageProcessingSettingsKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingSettingsKey.swift; sourceTree = "<group>"; };
-		6F402AE5328129DDF22F8BAA /* TTSPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSPlayerView.swift; path = iOS/UI/Reader/TTS/TTSPlayerView.swift; sourceTree = SOURCE_ROOT; };
 		723D3AF82E0DC5A5003ED4CF /* DownloadedMangaInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedMangaInfo.swift; sourceTree = "<group>"; };
 		723D3AFB2E0DC5C4003ED4CF /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		723D3AFC2E0DC5C4003ED4CF /* DownloadedMangaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedMangaView.swift; sourceTree = "<group>"; };
-		780FC2B5563CA9CE6085A472 /* TTSMiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSMiniPlayerView.swift; path = iOS/UI/Reader/TTS/TTSMiniPlayerView.swift; sourceTree = SOURCE_ROOT; };
 		7C63F0D42F48FD4B007D1811 /* ChapterTransitionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterTransitionViewController.swift; sourceTree = "<group>"; };
 		7C63F0D52F48FD4B007D1811 /* TextDoublePageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDoublePageViewController.swift; sourceTree = "<group>"; };
 		7C63F0D62F48FD4B007D1811 /* TextSinglePageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSinglePageViewController.swift; sourceTree = "<group>"; };
@@ -1382,8 +1378,6 @@
 				9B9347BA9833359968D5B48F /* TTSQueue.swift */,
 				F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */,
 				8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */,
-				780FC2B5563CA9CE6085A472 /* TTSMiniPlayerView.swift */,
-				6F402AE5328129DDF22F8BAA /* TTSPlayerView.swift */,
 				B1C2D3E4F5A6B7C8D9E0F1A2 /* TextChapterPosition.swift */,
 				D1E2F3A4B5C6D7E8F9A0B1C2 /* NormalizedTextChapter.swift */,
 				F1A2B3C4D5E6F7A8B9C0D1E2 /* TTSEstimator.swift */,
@@ -2995,8 +2989,6 @@
 				8D8F491F92C6F060E9D73336 /* TTSQueue.swift in Sources */,
 				43761130A866D39BCD7D5228 /* SpeechSynthesizing.swift in Sources */,
 				643AF950B661E1EF1C69677B /* TTSManager.swift in Sources */,
-				C757CFC69BE490E20BC08845 /* TTSMiniPlayerView.swift in Sources */,
-				860A8C4592B03B5E5B1BF8EE /* TTSPlayerView.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* TextChapterPosition.swift in Sources */,
 				C1D2E3F4A5B6C7D8E9F0A1B2 /* NormalizedTextChapter.swift in Sources */,
 				E1F2A3B4C5D6E7F8A9B0C1D2 /* TTSEstimator.swift in Sources */,
