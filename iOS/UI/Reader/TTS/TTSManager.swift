@@ -107,6 +107,12 @@ final class TTSManager: NSObject, ObservableObject {
     /// `pendingCharOffset`; reset to 0 on the next utterance (which always
     /// begins from offset 0 unless another seek lands first).
     private var activeCharOffset: Int = 0
+    /// True when the current paused state came from a user-initiated action
+    /// (toggle command, AirPod removed, lockscreen pause) rather than an
+    /// audio-session interruption. Auto-resume on interruption .ended is
+    /// gated on this being false, matching HIG and most iOS audio apps:
+    /// Siri/calls auto-resume; user-initiated pauses stay paused.
+    private var pausedByUser: Bool = false
     /// AVAudioSession interruption observer (phone call, Siri, AirPods press
     /// in some routings). Kept alive for the singleton's lifetime.
     private var interruptionObserver: NSObjectProtocol?
@@ -175,6 +181,7 @@ final class TTSManager: NSObject, ObservableObject {
 
     func play() {
         guard isActive else { return }
+        pausedByUser = false
         if synthesizer.isPaused {
             synthesizer.continueSpeakingNow()
             isPlaying = true
@@ -186,7 +193,9 @@ final class TTSManager: NSObject, ObservableObject {
         updateNowPlaying()
     }
 
-    func pause() {
+    func pause() { pauseInternal(byUser: true) }
+
+    private func pauseInternal(byUser: Bool) {
         guard isActive else { return }
         sessionRevision &+= 1
         synthesizer.pauseSpeakingNow()
@@ -194,6 +203,7 @@ final class TTSManager: NSObject, ObservableObject {
         // paused wall-clock interval into the observed duration.
         clearUtteranceSample()
         isPlaying = false
+        if byUser { pausedByUser = true }
         updateNowPlaying()
     }
 
@@ -224,6 +234,7 @@ final class TTSManager: NSObject, ObservableObject {
         currentUtteranceWordCount = 0
         isPlaying = false
         isActive = false
+        pausedByUser = false
         artwork = nil
         novelTitle = ""
         currentChapterTitle = ""
@@ -292,14 +303,20 @@ final class TTSManager: NSObject, ObservableObject {
         }
         switch type {
         case .began:
-            pause()
+            // System-driven pause; leave `pausedByUser` alone so a prior
+            // user-initiated pause still suppresses auto-resume on .ended.
+            pauseInternal(byUser: false)
         case .ended:
-            // iOS hints whether the interruption source wants us to resume
-            // (e.g. ended Siri prompt) versus stay paused (e.g. ended call).
-            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt,
-               AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) {
-                play()
+            // Auto-resume only when the system asks AND we didn't pause by
+            // user intent. Matches most iOS audio apps: Siri/calls resume,
+            // but a user-toggled pause (or an AirPod pulled out) stays
+            // paused even if the system later signals shouldResume.
+            guard !pausedByUser,
+                  let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt,
+                  AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) else {
+                return
             }
+            play()
         @unknown default:
             break
         }
