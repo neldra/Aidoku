@@ -19,7 +19,6 @@ struct TTSQueue {
     var current: TTSParagraph? {
         paragraphs.indices.contains(index) ? paragraphs[index] : nil
     }
-    var isAtEnd: Bool { index >= paragraphs.count - 1 }
 
     /// Absolute index of the first paragraph of the chapter `current` is in.
     var firstIndexOfCurrentChapter: Int {
@@ -38,10 +37,6 @@ struct TTSQueue {
     /// matching must use this, not the global queue index.
     var localIndexInCurrentChapter: Int {
         index - firstIndexOfCurrentChapter
-    }
-    var progress: Double {
-        guard paragraphs.count > 1 else { return paragraphs.isEmpty ? 0 : 1 }
-        return Double(index) / Double(paragraphs.count - 1)
     }
 
     /// Progress within the current paragraph's *own* chapter (0...1),

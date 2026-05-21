@@ -38,14 +38,11 @@ final class TTSManager: NSObject, ObservableObject {
 
     @Published private(set) var isActive = false
     @Published private(set) var isPlaying = false
-    /// Global index across the whole loaded queue (drives `progress`).
-    @Published private(set) var currentParagraphIndex = 0
     /// Index within the current chapter (drives reader highlight).
     @Published private(set) var currentLocalIndex = 0
-    @Published private(set) var paragraphCount = 0
-    @Published private(set) var novelTitle = ""
-    @Published private(set) var currentChapterTitle = ""
     @Published var artwork: UIImage?
+    private var novelTitle = ""
+    private var currentChapterTitle = ""
     /// When true, the chapter title is spoken before the first paragraph of
     /// every chapter the narration enters.
     @Published var announceChapterTitles = false {
@@ -117,9 +114,6 @@ final class TTSManager: NSObject, ObservableObject {
     /// disconnect). Kept alive for the singleton's lifetime.
     private var routeChangeObserver: NSObjectProtocol?
 
-    /// Chapter-local (0...1); resets to 0 each time the active chapter
-    /// changes so progress doesn't accumulate across the appended queue.
-    var progress: Double { queue.chapterProgress }
     var currentChapterKey: String? { queue.current?.chapterKey }
 
     /// Position of the narration cursor inside `currentNormalizedChapter`.
@@ -127,7 +121,7 @@ final class TTSManager: NSObject, ObservableObject {
     /// a mid-paragraph seek shows up immediately in elapsed/duration. Within
     /// a single utterance the offset doesn't tick — `willSpeakRangeOfSpeechString`
     /// would be needed for word-by-word precision.
-    var currentPosition: TextChapterPosition {
+    private var currentPosition: TextChapterPosition {
         TextChapterPosition(
             paragraphIndex: queue.localIndexInCurrentChapter,
             charOffsetInParagraph: activeCharOffset
@@ -169,7 +163,6 @@ final class TTSManager: NSObject, ObservableObject {
         sessionRevision &+= 1
         self.provider = provider
         queue = TTSQueue(paragraphs: paragraphs, startIndex: startIndex)
-        paragraphCount = queue.count
         currentNormalizedChapter = nil
         refreshNormalizedChapterIfNeeded()
         isActive = true
@@ -602,7 +595,6 @@ final class TTSManager: NSObject, ObservableObject {
     func syncReaderToCursor() {
         guard isActive, let paragraph = queue.current else { return }
         refreshNormalizedChapterIfNeeded()
-        currentParagraphIndex = queue.index
         currentLocalIndex = queue.localIndexInCurrentChapter
         provider?.ttsDidActivateParagraph(
             localIndex: queue.localIndexInCurrentChapter,
@@ -645,7 +637,6 @@ final class TTSManager: NSObject, ObservableObject {
             utterance.voice = voice
         }
         utterance.rate = rate
-        currentParagraphIndex = queue.index
         currentLocalIndex = queue.localIndexInCurrentChapter
         provider?.ttsDidActivateParagraph(
             localIndex: queue.localIndexInCurrentChapter,
@@ -714,7 +705,6 @@ final class TTSManager: NSObject, ObservableObject {
                 return
             }
             self.queue.appendChapter(more)
-            self.paragraphCount = self.queue.count
             if self.queue.advance() != nil {
                 self.activateCurrent(playing: shouldContinuePlaying)
             } else {
@@ -759,7 +749,6 @@ final class TTSManager: NSObject, ObservableObject {
             let paras = TTSText.paragraphs(chapterKey: prev.chapterKey, text: prev.text)
             guard !paras.isEmpty else { return }
             self.queue = TTSQueue(paragraphs: paras, startIndex: 0)
-            self.paragraphCount = self.queue.count
             self.currentNormalizedChapter = nil
             self.refreshNormalizedChapterIfNeeded()
             self.activateCurrent(playing: shouldContinuePlaying)
@@ -795,7 +784,6 @@ final class TTSManager: NSObject, ObservableObject {
         }
         sessionRevision &+= 1
         queue = TTSQueue(paragraphs: paragraphs, startIndex: 0)
-        paragraphCount = queue.count
         currentNormalizedChapter = nil
         pendingCharOffset = 0
         refreshNormalizedChapterIfNeeded()

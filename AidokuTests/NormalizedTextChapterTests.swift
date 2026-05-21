@@ -22,7 +22,6 @@ import Testing
         let ch = chapter(["one two", "three", "four five six"])
         #expect(ch.paragraphWordCounts == [2, 1, 3])
         #expect(ch.estimatedWordCount == 6)
-        #expect(ch.estimatedCharCount == "one two".count + "three".count + "four five six".count)
     }
 
     @Test("empty chapter is isEmpty and reports zero counts")
@@ -30,7 +29,6 @@ import Testing
         let ch = chapter([])
         #expect(ch.isEmpty)
         #expect(ch.estimatedWordCount == 0)
-        #expect(ch.estimatedCharCount == 0)
         #expect(ch.wordsRemaining(from: .start) == 0)
     }
 
@@ -81,14 +79,15 @@ import Testing
         #expect(ch.position(atWordsConsumed: 100) == .end(of: ch))
     }
 
-    @Test("position → wordsConsumed → position round trips at paragraph boundaries")
-    func roundTripAtBoundaries() {
+    @Test("position(atWordsConsumed:) lands at the start of each paragraph boundary")
+    func paragraphStartFromConsumedWords() {
         let ch = chapter(["one two three", "four five", "six seven eight nine"])
-        for pIdx in 0..<ch.paragraphs.count {
-            let p = TextChapterPosition(paragraphIndex: pIdx, charOffsetInParagraph: 0)
-            let consumed = ch.wordsConsumed(upTo: p)
-            let back = ch.position(atWordsConsumed: consumed)
-            #expect(back == p)
+        // Cumulative word counts at the start of each paragraph: 0, 3, 5.
+        var cumulative = 0
+        for pIdx in 0..<ch.paragraphWordCounts.count {
+            let landed = ch.position(atWordsConsumed: Double(cumulative))
+            #expect(landed == TextChapterPosition(paragraphIndex: pIdx, charOffsetInParagraph: 0))
+            cumulative += ch.paragraphWordCounts[pIdx]
         }
     }
 

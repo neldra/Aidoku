@@ -21,8 +21,6 @@ struct NormalizedTextChapter: Equatable {
     let paragraphWordCounts: [Int]
     /// Sum of `paragraphWordCounts`.
     let estimatedWordCount: Int
-    /// Sum of `paragraphs[i].count`.
-    let estimatedCharCount: Int
 
     init(id: String, title: String, paragraphs: [String], language: String = "en") {
         self.id = id
@@ -32,7 +30,6 @@ struct NormalizedTextChapter: Equatable {
         let counts = paragraphs.map { Self.wordCount($0) }
         self.paragraphWordCounts = counts
         self.estimatedWordCount = counts.reduce(0, +)
-        self.estimatedCharCount = paragraphs.reduce(0) { $0 + $1.count }
     }
 
     /// Whether the chapter has any narratable content.
@@ -66,14 +63,10 @@ struct NormalizedTextChapter: Equatable {
         return remaining
     }
 
-    /// Number of words consumed up to (but not including the remainder of) `position`.
-    func wordsConsumed(upTo position: TextChapterPosition) -> Double {
-        Double(estimatedWordCount) - wordsRemaining(from: position)
-    }
-
     /// Locate the position that corresponds to `wordsConsumed` words from
-    /// the chapter start. Inverse of `wordsConsumed(upTo:)` up to the
-    /// linear-interpolation precision; clamped into the chapter.
+    /// the chapter start. Inverse of the word-accumulation that
+    /// `wordsRemaining` performs, up to the linear-interpolation precision;
+    /// clamped into the chapter.
     func position(atWordsConsumed wordsConsumed: Double) -> TextChapterPosition {
         guard !paragraphs.isEmpty else { return .start }
         if wordsConsumed <= 0 { return .start }

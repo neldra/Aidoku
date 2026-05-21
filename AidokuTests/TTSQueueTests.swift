@@ -23,7 +23,6 @@ import Testing
         #expect(q.advance()?.id == 2)
         #expect(q.advance() == nil)
         #expect(q.index == 2)
-        #expect(q.isAtEnd)
     }
 
     @Test("rewind stops at the first paragraph")
@@ -35,15 +34,15 @@ import Testing
         #expect(q.index == 0)
     }
 
-    @Test("seek clamps and progress is fractional")
-    func seekProgress() {
+    @Test("seek clamps to valid index range")
+    func seekClamps() {
         var q = make(5)
         q.seek(to: 2)
         #expect(q.index == 2)
-        #expect(q.progress == 0.5)
         q.seek(to: 99)
         #expect(q.index == 4)
-        #expect(q.progress == 1.0)
+        q.seek(to: -3)
+        #expect(q.index == 0)
     }
 
     @Test("appendChapter renumbers ids contiguously and keeps position")
