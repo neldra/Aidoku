@@ -23,6 +23,9 @@ private final class MockSynth: SpeechSynthesizing {
     func finish(_ utterance: AVSpeechUtterance) {
         speechDelegate?.speechSynthesizer?(AVSpeechSynthesizer(), didFinish: utterance)
     }
+    func start(_ utterance: AVSpeechUtterance) {
+        speechDelegate?.speechSynthesizer?(AVSpeechSynthesizer(), didStart: utterance)
+    }
 }
 
 @MainActor
@@ -476,5 +479,70 @@ private final class StubProvider: TTSChapterProvider {
         manager.start(provider: StubProvider(), chapterKey: "c1",
                       text: "A\n\nB", startIndex: 0)
         #expect(synth.spoken == ["A"])
+    }
+
+    @Test("calibrator records a sample after didStart -> didFinish on the same utterance")
+    func calibratorRecordsSampleOnNaturalFinish() async {
+        // Inject a deterministic clock that advances by 60s between didStart
+        // and didFinish so the observed WPM lands inside the filter window.
+        var ticks = 0
+        let times: [Date] = [
+            Date(timeIntervalSince1970: 0),       // didStart
+            Date(timeIntervalSince1970: 60),      // didFinish -> 60s duration
+        ]
+        let clock: () -> Date = {
+            defer { ticks = min(ticks + 1, times.count - 1) }
+            return times[ticks]
+        }
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth, now: clock)
+        let provider = StubProvider()
+        // 60 words: at 60s that is 60 WPM, comfortably inside [50, 500].
+        let words = Array(repeating: "alpha", count: 60).joined(separator: " ")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: words, startIndex: 0)
+        #expect(manager.calibratorSampleCountForTesting == 0)
+
+        let utterance = synth.utterances[0]
+        synth.start(utterance)
+        await Task.yield()
+        synth.finish(utterance)
+        await Task.yield()
+        // Allow the @MainActor delegate hop tasks to drain.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(manager.calibratorSampleCountForTesting == 1)
+        #expect(abs(manager.calibratorCurrentWPMForTesting - 60.0) < 0.0001)
+    }
+
+    @Test("interrupted utterance does not feed the calibrator")
+    func calibratorIgnoresInterruptedUtterance() async {
+        var ticks = 0
+        let times: [Date] = [
+            Date(timeIntervalSince1970: 0),    // didStart on first utterance
+            Date(timeIntervalSince1970: 60),   // (unused after pause clears sample)
+        ]
+        let clock: () -> Date = {
+            defer { ticks = min(ticks + 1, times.count - 1) }
+            return times[ticks]
+        }
+        let synth = MockSynth()
+        let manager = TTSManager(synthesizer: synth, now: clock)
+        let provider = StubProvider()
+        let words = Array(repeating: "alpha", count: 60).joined(separator: " ")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: words, startIndex: 0)
+
+        let utterance = synth.utterances[0]
+        synth.start(utterance)
+        await Task.yield()
+        // Pause clears the in-flight sample; the synthesizer's late didFinish
+        // (which mirrors AVSpeech's behaviour after stopSpeakingNow) must not
+        // be misread as a natural completion.
+        manager.pause()
+        synth.finish(utterance)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(manager.calibratorSampleCountForTesting == 0)
     }
 }

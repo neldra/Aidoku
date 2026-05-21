@@ -74,11 +74,21 @@ final class TTSManager: NSObject, ObservableObject {
     static let announceChapterKey = "Reader.ttsAnnounceChapter"
 
     private let synthesizer: SpeechSynthesizing
+    /// Clock used for utterance-duration sampling. Injectable so tests can
+    /// drive deterministic WPM observations without real-time sleeps.
+    private let now: () -> Date
     private var queue = TTSQueue(paragraphs: [])
     private weak var provider: TTSChapterProvider?
     private var loadingNext = false
     private var loadingChapterNav = false
     private var currentUtterance: AVSpeechUtterance?
+    /// Wall-clock timestamp of the active utterance's `didStart` callback.
+    /// Cleared whenever the utterance is interrupted, replaced, or stopped so
+    /// only natural finishes flow into `calibrator.recordSample`.
+    private var currentUtteranceStartedAt: Date?
+    /// Word count of the spoken string (post chapter-title prefix, post
+    /// mid-paragraph substring) for the active utterance.
+    private var currentUtteranceWordCount: Int = 0
     private var sessionRevision = 0
     /// Chapter the title was last spoken for; used to announce the title
     /// exactly once per chapter the narration enters.
@@ -124,8 +134,12 @@ final class TTSManager: NSObject, ObservableObject {
         )
     }
 
-    init(synthesizer: SpeechSynthesizing = AVSpeechSynthesizer()) {
+    init(
+        synthesizer: SpeechSynthesizing = AVSpeechSynthesizer(),
+        now: @escaping () -> Date = Date.init
+    ) {
         self.synthesizer = synthesizer
+        self.now = now
         let defaults = UserDefaults.standard
         self.voiceIdentifier = defaults.string(forKey: Self.voiceKey)
             ?? AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())?.identifier
@@ -183,6 +197,9 @@ final class TTSManager: NSObject, ObservableObject {
         guard isActive else { return }
         sessionRevision &+= 1
         synthesizer.pauseSpeakingNow()
+        // Drop the in-flight sample so a resume->finish doesn't bake the
+        // paused wall-clock interval into the observed duration.
+        clearUtteranceSample()
         isPlaying = false
         updateNowPlaying()
     }
@@ -210,6 +227,8 @@ final class TTSManager: NSObject, ObservableObject {
         sessionRevision &+= 1
         synthesizer.stopSpeakingNow()
         currentUtterance = nil
+        currentUtteranceStartedAt = nil
+        currentUtteranceWordCount = 0
         isPlaying = false
         isActive = false
         artwork = nil
@@ -227,6 +246,10 @@ final class TTSManager: NSObject, ObservableObject {
     #if DEBUG
     /// Test seam: simulate the synthesizer finishing the current utterance.
     func handleUtteranceFinishedForTesting() { handleUtteranceFinished() }
+    /// Test inspection: number of post-filter calibration samples observed.
+    var calibratorSampleCountForTesting: Int { calibrator.sampleCount }
+    /// Test inspection: current calibrated WPM (baseline until first valid sample).
+    var calibratorCurrentWPMForTesting: Double { calibrator.currentWPM }
     #endif
 
     // MARK: - Internals
@@ -531,6 +554,7 @@ final class TTSManager: NSObject, ObservableObject {
         if synthesizer.isPaused {
             synthesizer.stopSpeakingNow()
             currentUtterance = nil
+            clearUtteranceSample()
         } else if isPlaying, synthesizer.isSpeaking {
             speakCurrent()
         }
@@ -542,10 +566,18 @@ final class TTSManager: NSObject, ObservableObject {
         } else {
             synthesizer.stopSpeakingNow()
             currentUtterance = nil
+            clearUtteranceSample()
             isPlaying = false
             syncReaderToCursor()
             updateNowPlaying()
         }
+    }
+
+    /// Drop the in-flight sample so a late `didFinish` (e.g. after stop/pause
+    /// flushes through the synth) can't be mistaken for a natural completion.
+    private func clearUtteranceSample() {
+        currentUtteranceStartedAt = nil
+        currentUtteranceWordCount = 0
     }
 
     // MARK: - Reader session binding
@@ -584,6 +616,7 @@ final class TTSManager: NSObject, ObservableObject {
         refreshNormalizedChapterIfNeeded()
         synthesizer.stopSpeakingNow()
         currentUtterance = nil
+        clearUtteranceSample()
         // Honor a pending mid-paragraph seek by taking the substring from
         // the requested offset (snapped to a word boundary); consume the
         // offset so subsequent paragraphs start at 0.
@@ -628,7 +661,30 @@ final class TTSManager: NSObject, ObservableObject {
     private func handleFinishedUtterance(_ utterance: AVSpeechUtterance) {
         guard isActive, isPlaying, currentUtterance === utterance else { return }
         currentUtterance = nil
+        recordCalibrationSampleIfAvailable()
         handleUtteranceFinished()
+    }
+
+    /// Feed the calibrator with the just-completed utterance's observed pace.
+    /// Only the natural-finish path calls this; stop/pause/restart paths run
+    /// `clearUtteranceSample()` first so a late delegate callback can't fire it.
+    private func recordCalibrationSampleIfAvailable() {
+        guard let startedAt = currentUtteranceStartedAt,
+              currentUtteranceWordCount > 0 else {
+            return
+        }
+        let durationSec = now().timeIntervalSince(startedAt)
+        calibrator.recordSample(
+            words: currentUtteranceWordCount,
+            durationSec: durationSec
+        )
+        clearUtteranceSample()
+    }
+
+    private func handleStartedUtterance(_ utterance: AVSpeechUtterance) {
+        guard isActive, currentUtterance === utterance else { return }
+        currentUtteranceStartedAt = now()
+        currentUtteranceWordCount = NormalizedTextChapter.wordCount(utterance.speechString)
     }
 
     /// Called when an utterance finishes naturally: advance, or load next chapter.
@@ -748,6 +804,13 @@ final class TTSManager: NSObject, ObservableObject {
 }
 
 extension TTSManager: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didStart utterance: AVSpeechUtterance
+    ) {
+        Task { @MainActor in self.handleStartedUtterance(utterance) }
+    }
+
     nonisolated func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didFinish utterance: AVSpeechUtterance
