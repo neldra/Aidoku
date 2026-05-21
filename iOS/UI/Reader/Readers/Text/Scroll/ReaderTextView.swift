@@ -27,6 +27,7 @@ struct ReaderTextView: View {
     var onParagraphFrames: (([Int: CGRect]) -> Void)?
 
     @ObservedObject private var tts = TTSManager.shared
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         source: AidokuRunner.Source?,
@@ -56,6 +57,13 @@ struct ReaderTextView: View {
     /// `paragraph.id` is the 0-based chapter-local index (paragraphs are
     /// built with the default `startIndex: 0`), so it compares directly
     /// against the manager's chapter-local index.
+    /// 16% accent reads cleanly on a near-white background; on a near-black
+    /// one it barely lifts. Roughly double the opacity in dark mode so the
+    /// active paragraph has comparable contrast against either surface.
+    private var highlightFill: Color {
+        Color.accentColor.opacity(colorScheme == .dark ? 0.32 : 0.16)
+    }
+
     private func isHighlighted(_ paragraph: TTSParagraph) -> Bool {
         tts.isActive
             && tts.currentChapterKey == chapterKey
@@ -78,9 +86,7 @@ struct ReaderTextView: View {
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(isHighlighted(paragraph)
-                                  ? Color.accentColor.opacity(0.16)
-                                  : Color.clear)
+                            .fill(isHighlighted(paragraph) ? highlightFill : Color.clear)
                     )
                     .background(
                         GeometryReader { geo in
