@@ -53,9 +53,9 @@ struct ReaderTextView: View {
         return TTSText.paragraphs(chapterKey: chapterKey, text: text)
     }
 
-    /// `paragraph.id` is the 0-based index within this chapter (this view
-    /// builds paragraphs with the default `startIndex: 0`), so it compares
-    /// directly against the manager's chapter-local index.
+    /// `paragraph.id` is the 0-based chapter-local index (paragraphs are
+    /// built with the default `startIndex: 0`), so it compares directly
+    /// against the manager's chapter-local index.
     private func isHighlighted(_ paragraph: TTSParagraph) -> Bool {
         tts.isActive
             && tts.currentChapterKey == chapterKey

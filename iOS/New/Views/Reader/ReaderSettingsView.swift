@@ -405,20 +405,13 @@ struct ReaderSettingsView: View {
     }
 }
 
-/// TTS voice + rate controls. Lives alongside font/theme settings so the
-/// in-app audio surface is just the toolbar headphone button — everything
-/// configurable about playback is set here (or via lockscreen during a session).
 private struct TTSReaderSettingsSection: View {
     @ObservedObject private var tts = TTSManager.shared
 
-    /// Local draft while the user drags the slider. Mirrors the pattern in the
-    /// removed TTSPlayerView: rate changes restart the current utterance, so we
-    /// only commit on slider release rather than on every value tick.
+    /// Local draft while the user drags the slider. Rate changes restart
+    /// the current utterance, so we only commit on slider release.
     @State private var draftRate: Float?
 
-    /// Snapshot voices once per sheet presentation. The list changes on the
-    /// order of OS voice downloads, which is rare enough that a re-render
-    /// every settings open is fine.
     private static let voices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice
         .speechVoices()
         .sorted { ($0.language, $0.name) < ($1.language, $1.name) }

@@ -7,24 +7,17 @@ import Foundation
 
 /// Self-tuning WPM estimator: feed it observed utterance durations and it
 /// returns a running estimate of how fast the active voice actually speaks
-/// at the user's current rate.
-///
-/// Strategy is an exponentially-weighted moving average over recent samples,
-/// resettable on voice change. Short utterances are filtered out — single-word
-/// paragraphs and pauses produce noisy samples that drag the average around.
-///
-/// See `docs/SPEC.md` §3.4. The pattern is iOS-specific value that Readest
-/// doesn't have access to (their estimate comes from foliate's structural
-/// `timeinfo` and is never compared against actual playback).
+/// at the user's current rate. Strategy is an exponentially-weighted moving
+/// average; resettable on voice change. Short utterances are filtered as
+/// noise (single-word paragraphs, pauses).
 struct WPMCalibrator {
-    /// Weight applied to a new sample. Old value keeps `1 - alpha`.
-    /// Default of 0.3 gives a ~3-sample warmup before the running value
-    /// is dominated by observations rather than the seed.
+    /// Weight applied to a new sample (old value keeps `1 - alpha`). The
+    /// default 0.3 gives a ~3-sample warmup before observations dominate.
     let alpha: Double
     /// Utterances shorter than this are discarded as noise.
     let minSampleDurationSec: TimeInterval
-    /// Sanity bounds — clamp observed WPM into this range so a one-off glitch
-    /// can't push the running value to a bad place.
+    /// Clamp observed WPM into this range so a one-off glitch can't push
+    /// the running value out of bounds.
     let minObservedWPM: Double
     let maxObservedWPM: Double
     /// Seed value used when no samples have been recorded.
@@ -32,9 +25,9 @@ struct WPMCalibrator {
 
     /// Current running estimate. `baselineWPM` until the first valid sample lands.
     private(set) var currentWPM: Double
-    /// Number of samples that have actually contributed (post-filter).
+    /// Number of samples that have contributed (post-filter).
     private(set) var sampleCount: Int = 0
-    /// Voice identifier the running estimate is calibrated against. Changing
+    /// Voice identifier the running estimate is calibrated against; changing
     /// voice resets the running value back to the baseline.
     private(set) var voiceIdentifier: String?
 
@@ -53,9 +46,8 @@ struct WPMCalibrator {
         self.currentWPM = baselineWPM
     }
 
-    /// Reset the running estimate. Call when the user picks a different voice —
-    /// `calibratedWPM` is per-voice, not per-rate (rate is applied as a scalar
-    /// in `TTSEstimator`).
+    /// Reset the running estimate. Call when the user picks a different
+    /// voice — `calibratedWPM` is per-voice, not per-rate.
     mutating func reset(forVoice newVoice: String?) {
         currentWPM = baselineWPM
         sampleCount = 0
@@ -77,8 +69,7 @@ struct WPMCalibrator {
             return false
         }
         if sampleCount == 0 {
-            // First valid sample replaces the seed outright — a single
-            // observation is strictly more informative than the global guess.
+            // First valid sample replaces the seed outright.
             currentWPM = observed
         } else {
             currentWPM = (1 - alpha) * currentWPM + alpha * observed

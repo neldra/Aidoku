@@ -177,8 +177,6 @@ class ReaderViewController: BaseObservingViewController {
             ttsBarButton!
         ]
 
-        // Drive the button icon from live TTS state so the headphone glyph
-        // becomes a pause/play affordance as soon as a session starts.
         ttsStateCancellable = TTSManager.shared.$isActive
             .combineLatest(TTSManager.shared.$isPlaying)
             .receive(on: DispatchQueue.main)
@@ -1261,10 +1259,6 @@ extension ReaderViewController {
 // MARK: - TTS
 
 extension ReaderViewController {
-    /// Tap on the toolbar headphone button. Three cases:
-    /// - inactive: start a session from the reader's nearest paragraph
-    /// - active + playing: pause
-    /// - active + paused: resume
     @objc func toggleTTS() {
         guard let textReader = reader as? ReaderTextViewController else { return }
         if TTSManager.shared.isActive {
@@ -1282,17 +1276,14 @@ extension ReaderViewController {
         loadTTSArtwork()
     }
 
-    /// Long-press on the toolbar headphone button: stop the engine entirely,
-    /// tearing down the audio session and clearing Now Playing. Distinct from
-    /// pause, which leaves the lock-screen player armed for quick resume.
+    /// Long-press on the toolbar headphone button stops the engine entirely,
+    /// tearing down the audio session and clearing Now Playing.
     @objc func handleTTSLongPress(_ gr: UILongPressGestureRecognizer) {
         guard gr.state == .began, TTSManager.shared.isActive else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         TTSManager.shared.stop()
     }
 
-    /// Headphone glyph when stopped; pause when playing; play when paused.
-    /// Driven by a Combine subscription on TTSManager.$isActive × $isPlaying.
     private func updateTTSButtonIcon(active: Bool, playing: Bool) {
         let symbolName: String
         let label: String
@@ -1310,8 +1301,8 @@ extension ReaderViewController {
         ttsButton?.accessibilityLabel = label
     }
 
-    /// Load the series cover once per session and hand it to the engine so
-    /// the lock-screen Now Playing entry shows art.
+    /// Load the series cover and hand it to the engine for the lock-screen
+    /// Now Playing entry.
     private func loadTTSArtwork() {
         guard TTSManager.shared.artwork == nil,
               let coverString = manga.cover,

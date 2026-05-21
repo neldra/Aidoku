@@ -31,8 +31,6 @@ protocol TTSChapterProvider: AnyObject {
 final class TTSManager: NSObject, ObservableObject {
     static let shared: TTSManager = {
         let manager = TTSManager()
-        // Off by default for the test-facing initializer (keeps the spoken
-        // assertions stable); the real session honors the user's setting.
         manager.announceChapterTitles =
             UserDefaults.standard.object(forKey: announceChapterKey) as? Bool ?? true
         return manager
@@ -45,14 +43,11 @@ final class TTSManager: NSObject, ObservableObject {
     /// Index within the current chapter (drives reader highlight).
     @Published private(set) var currentLocalIndex = 0
     @Published private(set) var paragraphCount = 0
-    /// Observable session metadata so the player UIs reflect the *live*
-    /// session instead of values snapshotted at presentation time.
     @Published private(set) var novelTitle = ""
     @Published private(set) var currentChapterTitle = ""
     @Published var artwork: UIImage?
     /// When true, the chapter title is spoken before the first paragraph of
-    /// every chapter the narration enters. Defaults off here so unit tests
-    /// see pure paragraph text; `shared` enables it from `UserDefaults`.
+    /// every chapter the narration enters.
     @Published var announceChapterTitles = false {
         didSet {
             UserDefaults.standard.set(announceChapterTitles, forKey: Self.announceChapterKey)
@@ -86,28 +81,22 @@ final class TTSManager: NSObject, ObservableObject {
     private var currentUtterance: AVSpeechUtterance?
     private var sessionRevision = 0
     /// Chapter the title was last spoken for; used to announce the title
-    /// exactly once per chapter the narration enters (not per paragraph).
+    /// exactly once per chapter the narration enters.
     private var lastAnnouncedChapterKey: String?
 
-    /// Normalized view of the chapter the cursor is currently in, lazily
-    /// rebuilt whenever `queue.current?.chapterKey` changes. Feeds the time
-    /// estimator + scrub/skip handlers; an `id` mismatch is the sole rebuild
-    /// trigger so per-paragraph advances don't pay the rebuild cost.
+    /// Normalized view of the chapter the cursor is currently in, rebuilt
+    /// whenever `queue.current?.chapterKey` changes. Feeds the time estimator
+    /// and scrub/skip handlers.
     private var currentNormalizedChapter: NormalizedTextChapter?
-    /// Per-voice WPM estimate; reset on voice change. Seeded with the
-    /// baseline until enough utterance timing samples arrive (the recording
-    /// path itself ships in a follow-up step).
     private var calibrator = WPMCalibrator()
-    /// Character offset into the *next* paragraph utterance — set by
+    /// Character offset into the next paragraph utterance — set by
     /// mid-paragraph seeks (lockscreen scrub / ±15s) and consumed once by
-    /// `speakCurrent`. Without this, ±15s within a long paragraph is a no-op
-    /// because the queue only moves at paragraph granularity; with it,
-    /// the synthesizer starts a fresh utterance at the requested offset.
+    /// `speakCurrent`. Without it the synthesizer would restart the paragraph
+    /// from the top instead of at the requested offset.
     private var pendingCharOffset: Int = 0
 
     /// Chapter-local (0...1); resets to 0 each time the active chapter
-    /// changes so the player/mini-player progress bar restarts per chapter
-    /// instead of accumulating across the appended multi-chapter queue.
+    /// changes so progress doesn't accumulate across the appended queue.
     var progress: Double { queue.chapterProgress }
     var currentChapterKey: String? { queue.current?.chapterKey }
 
@@ -248,9 +237,6 @@ final class TTSManager: NSObject, ObservableObject {
         center.pauseCommand.isEnabled = true
         center.nextTrackCommand.isEnabled = true
         center.previousTrackCommand.isEnabled = true
-        // Spec §5.5: enable scrub + ±15s using time-derived position math.
-        // The earlier prototype disabled these because there was no time model;
-        // TTSEstimator now lets us convert between elapsed seconds and position.
         center.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
         center.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
         center.skipForwardCommand.isEnabled = true
@@ -291,9 +277,9 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
-    /// Pull display metadata from the bound reader for the *current* chapter.
-    /// Keeps the last known value if the provider is momentarily detached so
-    /// the UI never flashes blank during a re-bind.
+    /// Pull display metadata from the bound reader. Keeps the last known
+    /// value when the provider is momentarily detached so the UI doesn't
+    /// flash blank during a re-bind.
     private func refreshSessionMetadata() {
         if let provider {
             novelTitle = provider.ttsNovelTitle
@@ -302,24 +288,18 @@ final class TTSManager: NSObject, ObservableObject {
     }
 
     private func updateNowPlaying() {
-        // Don't clobber the lockscreen with empty info when no session is
-        // active — every caller used to guard externally; centralizing here
-        // means callers in property observers can fire unconditionally.
         guard isActive else { return }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: currentChapterTitle,
             MPMediaItemPropertyArtist: novelTitle,
             // Classify as audio so the system surfaces this in Control Center's
-            // audio routing UI and (on iPhone 14 Pro+/15+) the Dynamic Island.
-            // Spec §7.2 — both properties exist for historical reasons; iOS
-            // reads `MPNowPlayingInfoPropertyMediaType` and `MPMediaItem`'s
-            // `MediaType` at different code paths.
+            // audio routing UI and the Dynamic Island. Both keys are set
+            // because iOS reads them on different code paths.
             MPMediaItemPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue),
             MPNowPlayingInfoPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue),
-            // Lockscreen "playback rate" is decoupled from speech rate: it's
-            // the wall-clock multiplier iOS uses to interpolate elapsed time
-            // between updates. Our `chapterElapsedSec` already encodes speech
-            // rate, so report 1.0 when playing, 0.0 when paused.
+            // Lockscreen playback rate is the wall-clock multiplier iOS uses
+            // to interpolate elapsed time between updates, not the speech
+            // rate. `chapterElapsedSec` already encodes speech rate.
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
         if let art = artwork {
@@ -336,19 +316,18 @@ final class TTSManager: NSObject, ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
-    /// Speech rate as a multiplier of "normal" pace, where 0.5
-    /// (`AVSpeechUtteranceDefaultSpeechRate`) maps to 1.0× and the slider's
-    /// 1.5× position maps to 1.5×. The mapping is approximate — AVSpeech's
-    /// internal rate-to-WPM curve is non-linear — but the calibrator absorbs
-    /// the residual error over a few samples.
+    /// Speech rate as a multiplier of normal pace
+    /// (`AVSpeechUtteranceDefaultSpeechRate` maps to 1.0×). Approximate —
+    /// AVSpeech's rate-to-WPM curve is non-linear, but the calibrator
+    /// absorbs the residual error over a few samples.
     private var rateMultiplier: Double {
         let defaultRate = Double(AVSpeechUtteranceDefaultSpeechRate)
         guard defaultRate > 0 else { return 1.0 }
         return Double(rate) / defaultRate
     }
 
-    /// Project the current cursor into a time estimate. Returns an all-nil
-    /// estimate when no chapter is cached (start path, inactive session).
+    /// Project the current cursor into a time estimate, or an all-nil
+    /// estimate when no chapter is cached.
     private func currentEstimate() -> TTSEstimate {
         guard let chapter = currentNormalizedChapter else { return TTSEstimate() }
         return TTSEstimator.estimate(
@@ -360,9 +339,7 @@ final class TTSManager: NSObject, ObservableObject {
     }
 
     /// Rebuild `currentNormalizedChapter` when the cursor crosses into a
-    /// chapter different from the cached one. The queue can hold paragraphs
-    /// from multiple appended chapters; the estimator only ever needs the
-    /// *current* one (chapter-local time math).
+    /// different chapter than the cached one.
     private func refreshNormalizedChapterIfNeeded() {
         guard let key = queue.current?.chapterKey else {
             currentNormalizedChapter = nil
@@ -385,8 +362,8 @@ final class TTSManager: NSObject, ObservableObject {
     /// `charOffsetInParagraph` is honored via `pendingCharOffset` — the next
     /// `speakCurrent` constructs a substring utterance starting at (or just
     /// past) that offset, snapped to a word boundary. AVSpeechSynthesizer
-    /// can't restart inside an existing utterance, so the workaround is to
-    /// stop and re-issue with the remaining substring (spec §7.1).
+    /// cannot restart inside an existing utterance, so we stop and re-issue
+    /// with the remaining substring.
     func seek(to position: TextChapterPosition) {
         performQueueMutation {
             guard queue.count > 0 else { return false }
@@ -427,20 +404,10 @@ final class TTSManager: NSObject, ObservableObject {
         seek(to: position)
     }
 
-    /// Apply a rate or voice change to the current paragraph.
-    /// AVSpeechUtterance bakes rate/voice in at construction, so the only way
-    /// to "change" them mid-paragraph is to stop the current utterance and
-    /// start a new one. Handles both states:
-    /// - speaking: restart the paragraph immediately at the new rate/voice
-    /// - paused: drop the paused utterance so `play()` builds a fresh one
-    ///   with the current rate/voice on resume (instead of `continueSpeakingNow`
-    ///   on the stale utterance, which retains the old rate)
-    /// Inactive / between-utterance states need no action — the next
-    /// `speakCurrent()` reads the current rate/voice naturally.
     /// Run a queue mutation inside the standard "snapshot play-state →
-    /// mutate → bump session revision → activate" envelope. Mutation
-    /// returns false to abort (e.g., `advance()` past the end of the queue
-    /// or `seek` on an empty queue).
+    /// mutate → bump session revision → activate" envelope. The mutation
+    /// closure returns false to abort (e.g. advancing past the end of the
+    /// queue or seeking on an empty queue).
     private func performQueueMutation(_ mutate: () -> Bool) {
         guard isActive else { return }
         let shouldContinuePlaying = isPlaying
@@ -449,10 +416,11 @@ final class TTSManager: NSObject, ObservableObject {
         activateCurrent(playing: shouldContinuePlaying)
     }
 
-    /// Shared body of `voiceIdentifier.didSet` and `rate.didSet`:
-    /// optionally reset per-voice calibration, restart the current
-    /// utterance (no-op when inactive), and refresh Now Playing so the
+    /// Apply a voice or rate change: optionally reset per-voice calibration,
+    /// restart the current utterance, and refresh Now Playing so the
     /// lockscreen scrub bar reflects the new pacing even while paused.
+    /// AVSpeechUtterance bakes rate/voice in at construction, so the only
+    /// way to apply them mid-paragraph is to issue a fresh utterance.
     private func applyConfigChange(resetCalibration: Bool) {
         if resetCalibration { calibrator.reset(forVoice: voiceIdentifier) }
         restartCurrent()
@@ -517,21 +485,18 @@ final class TTSManager: NSObject, ObservableObject {
         refreshNormalizedChapterIfNeeded()
         synthesizer.stopSpeakingNow()
         currentUtterance = nil
-        // If a prior seek requested a mid-paragraph start, take the substring
-        // beginning at the requested offset (snapped to a word boundary).
-        // Consume the offset so subsequent paragraphs start at 0.
+        // Honor a pending mid-paragraph seek by taking the substring from
+        // the requested offset (snapped to a word boundary); consume the
+        // offset so subsequent paragraphs start at 0.
         let fullText = paragraph.spokenText
         let offset = pendingCharOffset
         pendingCharOffset = 0
         var textToSpeak = (offset > 0 && offset < fullText.count)
             ? Self.substring(of: fullText, fromOffsetSnappedToWordBoundary: offset)
             : fullText
-        // Only announce on natural entry at a chapter's start. Mid-chapter
-        // starts (user tapped headphones at paragraph N) skip the announce:
-        // the user already has context. Auto-advance / userDidNavigate /
-        // loadPreviousChapter all land at localIndex 0 so they still announce.
-        // Mid-paragraph seeks also skip the announce — `offset > 0` means we
-        // landed inside an in-progress paragraph, never a chapter boundary.
+        // Announce only on natural entry at a chapter's start. Mid-chapter
+        // starts (user tapped headphones at paragraph N) and mid-paragraph
+        // seeks (offset > 0) skip the announce.
         if announceChapterTitles,
            paragraph.chapterKey != lastAnnouncedChapterKey,
            queue.localIndexInCurrentChapter == 0,
@@ -602,20 +567,19 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
-    /// Lock-screen / remote "next track" = jump to the next chapter boundary.
+    /// Lock-screen / remote "next track": jump to the next chapter boundary.
     func skipToNextChapter() {
         guard isActive else { return }
         let shouldContinuePlaying = isPlaying
         sessionRevision &+= 1
         // Reuse the natural end-of-chapter path: jump to the last paragraph
-        // of the current chapter, then let finish-handling load and roll
-        // into the next chapter.
+        // of the current chapter and let finish-handling roll into the next.
         queue.seek(to: queue.lastIndexOfCurrentChapter)
         handleUtteranceFinished(continuePlaying: shouldContinuePlaying)
     }
 
-    /// Lock-screen / remote "previous track" = restart current chapter, or
-    /// (if already at the chapter's first paragraph) load the previous one.
+    /// Lock-screen / remote "previous track": restart the current chapter,
+    /// or load the previous one if already at the chapter's first paragraph.
     func skipToPreviousChapter() {
         guard isActive else { return }
         if queue.localIndexInCurrentChapter == 0 {
@@ -647,12 +611,10 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
-    /// Return the suffix of `text` starting at the next word boundary
-    /// at or after `offset`. "Word boundary" here means: walk forward past
-    /// any in-progress word at `offset`, then past any whitespace, landing
-    /// on the start of a clean word. Used by mid-paragraph seeks so we
-    /// never start an utterance mid-word (which sounds awful with TTS).
-    /// At-most O(n) over the paragraph; called at most once per seek.
+    /// Return the suffix of `text` starting at the next word boundary at or
+    /// after `offset`: walk past any in-progress word, then past whitespace,
+    /// landing on a clean word start. Used by mid-paragraph seeks so an
+    /// utterance never starts mid-word.
     private static func substring(
         of text: String,
         fromOffsetSnappedToWordBoundary offset: Int
@@ -665,9 +627,9 @@ final class TTSManager: NSObject, ObservableObject {
         return String(chars[i...])
     }
 
-    /// User-driven reader navigation is authoritative. When the visible
-    /// reader moves to a new text chapter during a live session, rebuild the
-    /// queue and narrate that chapter from the top.
+    /// Rebuild the queue against `chapterKey` and narrate it from the top.
+    /// Called when the visible reader scrolls into a new text chapter
+    /// during a live session — user navigation is authoritative.
     func userDidNavigate(toChapterKey chapterKey: String, text: String) {
         guard isActive else { return }
         let paragraphs = TTSText.paragraphs(chapterKey: chapterKey, text: text)

@@ -6,11 +6,8 @@
 import Foundation
 
 /// Unified position cursor shared by the text reader and the TTS engine.
-///
 /// The reader writes this when scroll settles; the engine writes it when an
-/// utterance boundary fires. Time is derived from this — never stored.
-///
-/// See `docs/SPEC.md` §2.1.
+/// utterance boundary fires. Time is derived from this, never stored.
 struct TextChapterPosition: Codable, Equatable, Hashable {
     /// Paragraph index within the chapter's normalized paragraph array (0-based).
     var paragraphIndex: Int

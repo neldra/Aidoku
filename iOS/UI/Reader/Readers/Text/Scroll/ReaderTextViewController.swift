@@ -238,7 +238,6 @@ class ReaderTextViewController: BaseViewController {
     // MARK: - Configure
 
     override func configure() {
-        // Auto-scroll the scroll view when TTS activates a paragraph.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(ttsActiveParagraphChanged(_:)),
@@ -706,10 +705,9 @@ extension ReaderTextViewController {
         }
     }
 
-    /// Store a chapter's paragraph frames; if that chapter is the one TTS is
-    /// currently speaking, (re-)drive the active-paragraph scroll now that
-    /// its geometry exists. Idempotent — re-scrolling to the current
-    /// paragraph is harmless.
+    /// Store a chapter's paragraph frames; if that chapter is the one TTS
+    /// is currently speaking, re-drive the active-paragraph scroll now that
+    /// its geometry exists.
     private func ttsStoreFrames(_ frames: [Int: CGRect], chapterKey: String) {
         ttsParagraphFrames[chapterKey] = frames
         guard TTSManager.shared.isActive,
@@ -721,12 +719,10 @@ extension ReaderTextViewController {
         ))
     }
 
-    /// Make sure `key`'s chapter is appended/rendered so TTS highlight/scroll
-    /// can target it. Reuses the infinite-scroll append path.
+    /// Make sure `key`'s chapter is appended so TTS highlight/scroll can
+    /// target it. Reuses the infinite-scroll append path.
     private func ensureChapterRendered(key: String) {
         guard !sections.contains(where: { $0.chapter.key == key }) else { return }
-        // The TTS queue only rolls forward into `nextChapter`; that is
-        // exactly what appendNextChapter() renders.
         if nextChapter?.key == key {
             appendNextChapter()
         } else if previousChapter?.key == key {
@@ -1040,8 +1036,8 @@ extension Notification.Name {
 }
 
 extension ReaderTextViewController: TTSChapterProvider {
-    /// Global paragraph index nearest the vertical center of the viewport,
-    /// within the current chapter's section.
+    /// Paragraph index nearest the top of the visible viewport, within the
+    /// current chapter's section.
     var nearestParagraphIndex: Int {
         guard let sectionIndex = currentSectionIndex else { return 0 }
         let key = sections[sectionIndex].chapter.key
@@ -1064,8 +1060,8 @@ extension ReaderTextViewController: TTSChapterProvider {
     func ttsChapterTitle(forKey key: String) -> String {
         // Resolve from the full known chapter list, not just rendered
         // sections: on a cross-chapter TTS rollover the queue enters the new
-        // chapter before the reader has asynchronously rendered its section,
-        // so a sections-only lookup would return "" until the next paragraph.
+        // chapter before its section has finished rendering, so a
+        // sections-only lookup would return "" until the next paragraph.
         let resolved = sections.first(where: { $0.chapter.key == key })?.chapter
             ?? viewModel.manga.chapters?.first(where: { $0.key == key })
             ?? [chapter, nextChapter, previousChapter]

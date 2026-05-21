@@ -5,13 +5,10 @@
 
 import Foundation
 
-/// Result of a TTS time estimate. All values are seconds remaining (not minutes
-/// like Readest's `timeinfo`); UI converts to clock format at the display layer.
-///
-/// `nil` values mean an estimate could not be produced (empty chapter, position
-/// past the end, invalid rate). Mirrors Readest's nullable-fields convention so
-/// the lockscreen scrub bar / display chips can render placeholders cleanly.
-/// See `docs/SPEC.md` §3.4 and `notes/readest-investigation.md`.
+/// Result of a TTS time estimate. All values are in seconds; UI converts
+/// to clock format at the display layer. `nil` values mean an estimate
+/// could not be produced (empty chapter, position past the end, invalid
+/// rate) — display chips can render placeholders.
 struct TTSEstimate: Equatable {
     /// Seconds left in the current chapter from `position`.
     var chapterRemainingSec: TimeInterval?
@@ -24,16 +21,14 @@ struct TTSEstimate: Equatable {
     var finishAtTimestamp: Date?
 }
 
-/// Pure time-from-position math. No playback state, no observers — `estimate()`
-/// is a static function so it can be called from anywhere (lockscreen update,
-/// reader UI, unit tests).
+/// Pure time-from-position math. No playback state — `estimate()` is static
+/// so it can be called from anywhere (lockscreen update, reader UI, tests).
 ///
-/// Baseline: WPM scaled by user-selected rate, optionally adjusted by a
-/// per-voice `calibratedWPM` from `WPMCalibrator`. See spec §3.4 for the
-/// rationale on WPM (not CPS) and on self-calibration.
+/// Baseline WPM is scaled by user-selected rate and optionally adjusted by a
+/// per-voice `calibratedWPM` from `WPMCalibrator`.
 enum TTSEstimator {
-    /// Conventional pace of a US English premium voice at `AVSpeechUtteranceDefaultSpeechRate`.
-    /// This is the seed value `WPMCalibrator` starts from before any measurements arrive.
+    /// Conventional pace of a US English premium voice at
+    /// `AVSpeechUtteranceDefaultSpeechRate`. `WPMCalibrator` seeds from this.
     static let baselineWPM: Double = 175
 
     /// Compute a remaining/elapsed/finish-at estimate.
@@ -53,12 +48,10 @@ enum TTSEstimator {
         calibratedWPM: Double = baselineWPM,
         now: Date = Date()
     ) -> TTSEstimate {
-        // Guard: chapter has nothing to say, or our pace inputs are nonsense.
         guard !chapter.isEmpty else { return TTSEstimate() }
         let effectiveRate = (rate.isFinite && rate > 0) ? rate : 1.0
         let effectiveWPM = (calibratedWPM.isFinite && calibratedWPM > 0) ? calibratedWPM : baselineWPM
 
-        // Words per second at the effective pace.
         let wps = effectiveWPM * effectiveRate / 60.0
         guard wps > 0 else { return TTSEstimate() }
 

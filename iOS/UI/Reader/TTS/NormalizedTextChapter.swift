@@ -5,12 +5,9 @@
 
 import Foundation
 
-/// Source-agnostic representation of a chapter's narratable text. Sources may
-/// return markdown, HTML fragments, well-paragraphed text, or wall-of-text;
-/// normalization collapses all of those into one canonical shape so the rest
-/// of the TTS pipeline sees a single type.
-///
-/// See `docs/SPEC.md` §2.2 and §7.6.
+/// Source-agnostic representation of a chapter's narratable text. Markdown,
+/// HTML fragments, and wall-of-text input all collapse into the same shape
+/// so the rest of the TTS pipeline sees a single type.
 struct NormalizedTextChapter: Equatable {
     let id: String
     let title: String
@@ -42,12 +39,8 @@ struct NormalizedTextChapter: Equatable {
     var isEmpty: Bool { paragraphs.isEmpty || estimatedWordCount == 0 }
 
     /// Number of words still ahead of (and including the remainder of) `position`.
-    ///
     /// The current paragraph's remaining words are estimated by linearly
-    /// interpolating from `charOffsetInParagraph` across its character count —
-    /// `wordCount * (1 - offset / paragraph.count)`. This is an approximation;
-    /// position math doesn't need word-level precision inside a paragraph, only
-    /// monotonic progression as the engine advances through it.
+    /// interpolating `charOffsetInParagraph` across its character count.
     func wordsRemaining(from position: TextChapterPosition) -> Double {
         guard !paragraphs.isEmpty else { return 0 }
         let clamped = position.clamped(to: self)
@@ -78,19 +71,18 @@ struct NormalizedTextChapter: Equatable {
         Double(estimatedWordCount) - wordsRemaining(from: position)
     }
 
-    /// Locate the position that corresponds to `wordsConsumed` words from the
-    /// chapter start. The returned position is clamped into the chapter.
-    /// Inverse of `wordsConsumed(upTo:)` up to the linear-interpolation precision.
+    /// Locate the position that corresponds to `wordsConsumed` words from
+    /// the chapter start. Inverse of `wordsConsumed(upTo:)` up to the
+    /// linear-interpolation precision; clamped into the chapter.
     func position(atWordsConsumed wordsConsumed: Double) -> TextChapterPosition {
         guard !paragraphs.isEmpty else { return .start }
         if wordsConsumed <= 0 { return .start }
         if wordsConsumed >= Double(estimatedWordCount) { return .end(of: self) }
 
-        // Canonical form at a paragraph boundary: start of the *next* paragraph,
-        // not end of the previous one. That matches how playback advances:
-        // when the synthesizer finishes paragraph N, position becomes (N+1, 0).
-        // Use strict `<` so the seam at exactly `next` words consumed falls into
-        // the following iteration rather than terminating in the current one.
+        // At a paragraph boundary, canonical form is the start of the *next*
+        // paragraph (matches how playback advances). Use strict `<` so the
+        // seam at exactly `next` words consumed lands in the following
+        // iteration rather than terminating in the current one.
         var running = 0.0
         for (idx, words) in paragraphWordCounts.enumerated() {
             let next = running + Double(words)
@@ -116,9 +108,7 @@ struct NormalizedTextChapter: Equatable {
 
     // MARK: - Word counting
 
-    /// Lightweight word counter: contiguous non-whitespace runs.
-    /// Matches the convention `str.split(separator: " ").count` for typical text
-    /// without paying the cost of allocating substring arrays per call.
+    /// Count contiguous non-whitespace runs.
     static func wordCount(_ text: String) -> Int {
         var count = 0
         var inWord = false
