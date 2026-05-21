@@ -315,6 +315,13 @@ final class TTSManager: NSObject, ObservableObject {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: currentChapterTitle,
             MPMediaItemPropertyArtist: novelTitle,
+            // Classify as audio so the system surfaces this in Control Center's
+            // audio routing UI and (on iPhone 14 Pro+/15+) the Dynamic Island.
+            // Spec §7.2 — both properties exist for historical reasons; iOS
+            // reads `MPNowPlayingInfoPropertyMediaType` and `MPMediaItem`'s
+            // `MediaType` at different code paths.
+            MPMediaItemPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue),
+            MPNowPlayingInfoPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue),
             // Lockscreen "playback rate" is decoupled from speech rate: it's
             // the wall-clock multiplier iOS uses to interpolate elapsed time
             // between updates. Our `chapterElapsedSec` already encodes speech
@@ -423,9 +430,24 @@ final class TTSManager: NSObject, ObservableObject {
         seek(to: position)
     }
 
+    /// Apply a rate or voice change to the current paragraph.
+    /// AVSpeechUtterance bakes rate/voice in at construction, so the only way
+    /// to "change" them mid-paragraph is to stop the current utterance and
+    /// start a new one. Handles both states:
+    /// - speaking: restart the paragraph immediately at the new rate/voice
+    /// - paused: drop the paused utterance so `play()` builds a fresh one
+    ///   with the current rate/voice on resume (instead of `continueSpeakingNow`
+    ///   on the stale utterance, which retains the old rate)
+    /// Inactive / between-utterance states need no action — the next
+    /// `speakCurrent()` reads the current rate/voice naturally.
     private func restartCurrent() {
-        guard isActive, isPlaying, synthesizer.isSpeaking, !synthesizer.isPaused else { return }
-        speakCurrent()
+        guard isActive else { return }
+        if synthesizer.isPaused {
+            synthesizer.stopSpeakingNow()
+            currentUtterance = nil
+        } else if isPlaying, synthesizer.isSpeaking {
+            speakCurrent()
+        }
     }
 
     private func activateCurrent(playing shouldPlay: Bool) {
@@ -477,7 +499,13 @@ final class TTSManager: NSObject, ObservableObject {
         synthesizer.stopSpeakingNow()
         currentUtterance = nil
         var textToSpeak = paragraph.spokenText
-        if announceChapterTitles, paragraph.chapterKey != lastAnnouncedChapterKey {
+        // Only announce on natural entry at a chapter's start. Mid-chapter
+        // starts (user tapped headphones at paragraph N) skip the announce:
+        // the user already has context. Auto-advance / userDidNavigate /
+        // loadPreviousChapter all land at localIndex 0 so they still announce.
+        if announceChapterTitles,
+           paragraph.chapterKey != lastAnnouncedChapterKey,
+           queue.localIndexInCurrentChapter == 0 {
             let title = provider?.ttsChapterTitle(forKey: paragraph.chapterKey) ?? ""
             if !title.isEmpty {
                 textToSpeak = "\(title). \(textToSpeak)"
