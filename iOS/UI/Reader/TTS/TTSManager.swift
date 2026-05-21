@@ -66,13 +66,26 @@ final class TTSManager: NSObject, ObservableObject {
                 // the next utterance's pacing belongs to a different voice.
                 calibrator.reset(forVoice: voiceIdentifier)
                 restartCurrent()
+                // Reset to baseline WPM shifts the projected duration; the
+                // lockscreen needs to see the new numbers immediately, not
+                // wait for the next speakCurrent (which may not fire if
+                // we're paused).
+                updateNowPlaying()
             }
         }
     }
     @Published var rate: Float {
         didSet {
             UserDefaults.standard.set(rate, forKey: Self.rateKey)
-            if oldValue != rate { restartCurrent() }
+            if oldValue != rate {
+                restartCurrent()
+                // Position is unchanged but rate is — chapter duration and
+                // elapsed projection both shift. Push to MPNowPlayingInfoCenter
+                // now so the lockscreen scrub bar shows the new bounds even
+                // while paused (restartCurrent's paused branch doesn't speak
+                // and therefore doesn't trigger an updateNowPlaying).
+                updateNowPlaying()
+            }
         }
     }
 
@@ -319,6 +332,10 @@ final class TTSManager: NSObject, ObservableObject {
     }
 
     private func updateNowPlaying() {
+        // Don't clobber the lockscreen with empty info when no session is
+        // active — every caller used to guard externally; centralizing here
+        // means callers in property observers can fire unconditionally.
+        guard isActive else { return }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: currentChapterTitle,
             MPMediaItemPropertyArtist: novelTitle,
