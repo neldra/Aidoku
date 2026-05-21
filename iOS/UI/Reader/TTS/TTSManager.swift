@@ -101,6 +101,12 @@ final class TTSManager: NSObject, ObservableObject {
     /// baseline until enough utterance timing samples arrive (the recording
     /// path itself ships in a follow-up step).
     private var calibrator = WPMCalibrator()
+    /// Character offset into the *next* paragraph utterance — set by
+    /// mid-paragraph seeks (lockscreen scrub / ±15s) and consumed once by
+    /// `speakCurrent`. Without this, ±15s within a long paragraph is a no-op
+    /// because the queue only moves at paragraph granularity; with it,
+    /// the synthesizer starts a fresh utterance at the requested offset.
+    private var pendingCharOffset: Int = 0
 
     /// Chapter-local (0...1); resets to 0 each time the active chapter
     /// changes so the player/mini-player progress bar restarts per chapter
@@ -222,6 +228,7 @@ final class TTSManager: NSObject, ObservableObject {
         novelTitle = ""
         currentChapterTitle = ""
         lastAnnouncedChapterKey = nil
+        pendingCharOffset = 0
         deactivateAudioSession()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
@@ -386,10 +393,13 @@ final class TTSManager: NSObject, ObservableObject {
         )
     }
 
-    /// Move the cursor to the paragraph at `position` within the current
-    /// chapter, mirroring the play/paused semantics of `skipForward`/`skipBackward`.
-    /// `charOffsetInParagraph` is ignored until mid-paragraph seek is wired —
-    /// AVSpeechSynthesizer can't restart inside an utterance natively.
+    /// Move the cursor to `position` within the current chapter, mirroring
+    /// the play/paused semantics of `skipForward`/`skipBackward`.
+    /// `charOffsetInParagraph` is honored via `pendingCharOffset` — the next
+    /// `speakCurrent` constructs a substring utterance starting at (or just
+    /// past) that offset, snapped to a word boundary. AVSpeechSynthesizer
+    /// can't restart inside an existing utterance, so the workaround is to
+    /// stop and re-issue with the remaining substring (spec §7.1).
     func seek(to position: TextChapterPosition) {
         guard isActive, queue.count > 0 else { return }
         let first = queue.firstIndexOfCurrentChapter
@@ -398,6 +408,7 @@ final class TTSManager: NSObject, ObservableObject {
         let shouldContinuePlaying = isPlaying
         sessionRevision &+= 1
         queue.seek(to: absolute)
+        pendingCharOffset = max(0, position.charOffsetInParagraph)
         activateCurrent(playing: shouldContinuePlaying)
     }
 
@@ -498,14 +509,25 @@ final class TTSManager: NSObject, ObservableObject {
         refreshNormalizedChapterIfNeeded()
         synthesizer.stopSpeakingNow()
         currentUtterance = nil
-        var textToSpeak = paragraph.spokenText
+        // If a prior seek requested a mid-paragraph start, take the substring
+        // beginning at the requested offset (snapped to a word boundary).
+        // Consume the offset so subsequent paragraphs start at 0.
+        let fullText = paragraph.spokenText
+        let offset = pendingCharOffset
+        pendingCharOffset = 0
+        var textToSpeak = (offset > 0 && offset < fullText.count)
+            ? Self.substring(of: fullText, fromOffsetSnappedToWordBoundary: offset)
+            : fullText
         // Only announce on natural entry at a chapter's start. Mid-chapter
         // starts (user tapped headphones at paragraph N) skip the announce:
         // the user already has context. Auto-advance / userDidNavigate /
         // loadPreviousChapter all land at localIndex 0 so they still announce.
+        // Mid-paragraph seeks also skip the announce — `offset > 0` means we
+        // landed inside an in-progress paragraph, never a chapter boundary.
         if announceChapterTitles,
            paragraph.chapterKey != lastAnnouncedChapterKey,
-           queue.localIndexInCurrentChapter == 0 {
+           queue.localIndexInCurrentChapter == 0,
+           offset == 0 {
             let title = provider?.ttsChapterTitle(forKey: paragraph.chapterKey) ?? ""
             if !title.isEmpty {
                 textToSpeak = "\(title). \(textToSpeak)"
@@ -617,6 +639,24 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
+    /// Return the suffix of `text` starting at the next word boundary
+    /// at or after `offset`. "Word boundary" here means: walk forward past
+    /// any in-progress word at `offset`, then past any whitespace, landing
+    /// on the start of a clean word. Used by mid-paragraph seeks so we
+    /// never start an utterance mid-word (which sounds awful with TTS).
+    /// At-most O(n) over the paragraph; called at most once per seek.
+    private static func substring(
+        of text: String,
+        fromOffsetSnappedToWordBoundary offset: Int
+    ) -> String {
+        let chars = Array(text)
+        var i = min(max(0, offset), chars.count)
+        while i < chars.count, !chars[i].isWhitespace { i += 1 }
+        while i < chars.count, chars[i].isWhitespace { i += 1 }
+        if i >= chars.count { return "" }
+        return String(chars[i...])
+    }
+
     /// User-driven reader navigation is authoritative. When the visible
     /// reader moves to a new text chapter during a live session, rebuild the
     /// queue and narrate that chapter from the top.
@@ -631,6 +671,7 @@ final class TTSManager: NSObject, ObservableObject {
         queue = TTSQueue(paragraphs: paragraphs, startIndex: 0)
         paragraphCount = queue.count
         currentNormalizedChapter = nil
+        pendingCharOffset = 0
         refreshNormalizedChapterIfNeeded()
         activateCurrent(playing: isPlaying)
     }
