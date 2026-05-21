@@ -430,7 +430,7 @@ private struct TTSReaderSettingsSection: View {
     }
 
     var body: some View {
-        Section(NSLocalizedString("TEXT_TO_SPEECH")) {
+        Section(String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("TEXT_TO_SPEECH"))) {
             Picker(NSLocalizedString("TTS_VOICE"), selection: $tts.voiceIdentifier) {
                 ForEach(Self.voices, id: \.identifier) { voice in
                     Text("\(voice.name) (\(voice.language))")
