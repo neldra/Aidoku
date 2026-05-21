@@ -182,6 +182,9 @@ final class TTSManager: NSObject, ObservableObject {
     func play() {
         guard isActive else { return }
         pausedByUser = false
+        // Reactivate the audio session in case a user-pause deactivated it
+        // (see pauseInternal byUser:true). Safe to call when already active.
+        activateAudioSession()
         if synthesizer.isPaused {
             synthesizer.continueSpeakingNow()
             isPlaying = true
@@ -198,12 +201,26 @@ final class TTSManager: NSObject, ObservableObject {
     private func pauseInternal(byUser: Bool) {
         guard isActive else { return }
         sessionRevision &+= 1
-        synthesizer.pauseSpeakingNow()
+        if byUser {
+            // Stop synth and deactivate the audio session. While the session
+            // is active, iOS dispatches pauseCommand for every play/pause
+            // gesture regardless of our MPNowPlayingInfoCenter.playbackState,
+            // and the lockscreen icon stays on the pause glyph. Deactivating
+            // is the signal iOS reads. Resume reactivates the session and
+            // re-issues the current paragraph from activeCharOffset via
+            // speakCurrent.
+            synthesizer.stopSpeakingNow()
+            pendingCharOffset = activeCharOffset
+            currentUtterance = nil
+            try? AVAudioSession.sharedInstance().setActive(false)
+            pausedByUser = true
+        } else {
+            synthesizer.pauseSpeakingNow()
+        }
         // Drop the in-flight sample so a resume->finish doesn't bake the
         // paused wall-clock interval into the observed duration.
         clearUtteranceSample()
         isPlaying = false
-        if byUser { pausedByUser = true }
         updateNowPlaying()
     }
 
