@@ -68,7 +68,7 @@ private final class StubProvider: TTSChapterProvider {
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A\n\nB\n\nC", startIndex: 1)
         #expect(synth.spoken == ["B"])
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(provider.activated == [1])
         #expect(manager.isActive && manager.isPlaying)
     }
@@ -147,7 +147,7 @@ private final class StubProvider: TTSChapterProvider {
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         #expect(manager.currentChapterKey == "c5")
-        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
         #expect(synth.spoken == ["A", "M"])
         #expect(provider.activated == [0, 0])
@@ -160,9 +160,9 @@ private final class StubProvider: TTSChapterProvider {
         manager.start(provider: StubProvider(), chapterKey: "c1",
                       text: "A\n\nB\n\nC", startIndex: 0)
         manager.skipForward()
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         manager.skipBackward()
-        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
     }
 
     @Test("controls are no-ops when inactive")
@@ -183,7 +183,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.isActive == false)
         #expect(manager.isPlaying == false)
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(synth.spoken == ["B"])
         #expect(provider.activated == [1])
     }
@@ -198,14 +198,14 @@ private final class StubProvider: TTSChapterProvider {
         manager.pause()
 
         manager.skipForward()
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
         #expect(manager.isPlaying == false)
         #expect(synth.spoken == ["A"])
         #expect(provider.activated == [0, 1])
 
         manager.skipBackward()
-        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
         #expect(manager.isPlaying == false)
         #expect(synth.spoken == ["A"])
@@ -223,7 +223,7 @@ private final class StubProvider: TTSChapterProvider {
 
         manager.play()
 
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
         #expect(synth.spoken == ["A", "B"])
         #expect(manager.isPlaying)
@@ -241,7 +241,7 @@ private final class StubProvider: TTSChapterProvider {
             ? AVSpeechUtteranceDefaultSpeechRate
             : AVSpeechUtteranceDefaultSpeechRate * 1.5
 
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
         #expect(synth.spoken == ["B", "B"])
         #expect(provider.activated == [1, 1])
@@ -264,7 +264,7 @@ private final class StubProvider: TTSChapterProvider {
         synth.finish(stoppedUtterance)
         try? await Task.sleep(nanoseconds: 50_000_000)
 
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
         #expect(synth.spoken == ["B", "B"])
         #expect(provider.activated == [1, 1])
@@ -272,7 +272,7 @@ private final class StubProvider: TTSChapterProvider {
         synth.finish(synth.utterances[1])
         try? await Task.sleep(nanoseconds: 50_000_000)
 
-        #expect(manager.currentParagraphIndex == 2)
+        #expect(manager.currentParagraphIndexForTesting == 2)
         #expect(manager.currentLocalIndex == 2)
         #expect(synth.spoken == ["B", "B", "C"])
         #expect(provider.activated == [1, 1, 2])
@@ -291,7 +291,7 @@ private final class StubProvider: TTSChapterProvider {
             ? AVSpeechUtteranceDefaultSpeechRate
             : AVSpeechUtteranceDefaultSpeechRate * 1.5
 
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
         #expect(synth.spoken == ["B"])
         #expect(provider.activated == [1])
@@ -348,7 +348,7 @@ private final class StubProvider: TTSChapterProvider {
         #expect(synth.spoken == ["C"])
         manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
         #expect(manager.currentChapterKey == "c5")
-        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(synth.spoken == ["C", "X"])
         #expect(provider.activated == [2, 0])
     }
@@ -365,7 +365,7 @@ private final class StubProvider: TTSChapterProvider {
         manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
 
         #expect(manager.currentChapterKey == "c5")
-        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
         #expect(synth.spoken == ["C"])
         #expect(provider.activated == [2, 0])
@@ -407,7 +407,7 @@ private final class StubProvider: TTSChapterProvider {
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(manager.currentChapterKey == "c2")
-        #expect(manager.currentParagraphIndex == 1)
+        #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 0)
         #expect(synth.spoken == ["A"])
         #expect(provider.activated == [0, 0])
@@ -428,7 +428,7 @@ private final class StubProvider: TTSChapterProvider {
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(manager.currentChapterKey == "c0")
-        #expect(manager.currentParagraphIndex == 0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
         #expect(synth.spoken == ["A"])
         #expect(provider.activated == [0, 0])
@@ -441,10 +441,10 @@ private final class StubProvider: TTSChapterProvider {
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A\n\nB", startIndex: 0)
-        #expect(manager.novelTitle == "Novel")
-        #expect(manager.currentChapterTitle == "c1")
+        #expect(manager.novelTitleForTesting == "Novel")
+        #expect(manager.currentChapterTitleForTesting == "c1")
         manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY")
-        #expect(manager.currentChapterTitle == "c2")
+        #expect(manager.currentChapterTitleForTesting == "c2")
     }
 
     @Test("progress is chapter-local and resets when the chapter changes")
@@ -452,9 +452,9 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(synthesizer: MockSynth())
         manager.start(provider: StubProvider(), chapterKey: "c1",
                       text: "A\n\nB\n\nC", startIndex: 2)
-        #expect(manager.progress == 1)             // last paragraph of c1
+        #expect(manager.chapterProgressForTesting == 1)             // last paragraph of c1
         manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY\n\nZ")
-        #expect(manager.progress == 0)             // reset at the top of c2
+        #expect(manager.chapterProgressForTesting == 0)             // reset at the top of c2
     }
 
     @Test("announces the chapter title once when entering each chapter")

@@ -243,6 +243,17 @@ final class TTSManager: NSObject, ObservableObject {
     var calibratorSampleCountForTesting: Int { calibrator.sampleCount }
     /// Test inspection: current calibrated WPM (baseline until first valid sample).
     var calibratorCurrentWPMForTesting: Double { calibrator.currentWPM }
+    /// Test inspection: global queue index across the whole (possibly multi-chapter)
+    /// queue. Production reads `currentLocalIndex`; tests need the global value
+    /// to verify cross-chapter ordering after `queue.appendChapter`.
+    var currentParagraphIndexForTesting: Int { queue.index }
+    /// Test inspection: chapter-local progress (0..1) that resets per chapter.
+    /// Production reads it indirectly via `currentEstimate` for the lockscreen.
+    var chapterProgressForTesting: Double { queue.chapterProgress }
+    /// Test inspection: novel/chapter titles cached from the provider; production
+    /// reads them internally for Now Playing metadata.
+    var novelTitleForTesting: String { novelTitle }
+    var currentChapterTitleForTesting: String { currentChapterTitle }
     #endif
 
     // MARK: - Internals
