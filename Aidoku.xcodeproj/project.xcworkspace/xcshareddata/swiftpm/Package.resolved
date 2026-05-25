@@ -1,5 +1,5 @@
 {
-  "originHash" : "fbee1fcd32ad03a92ffe9109e2bd94b400fad95c547fb7d3b5ec7a14031d23a7",
+  "originHash" : "7cb63fdb845cd544a5e043d9951cc6ef86be7d3e68c0d581e698fb779b1cfbb9",
   "pins" : [
     {
       "identity" : "aidokurunner",
@@ -8,6 +8,14 @@
       "state" : {
         "branch" : "main",
         "revision" : "3dcb4ea9afd8f6ad35b4f7fe47166f596ae4a0a9"
+      }
+    },
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/neldra/FluidAudio.git",
+      "state" : {
+        "revision" : "6a90a5ff2cedaecd45fc13969e73815a8f4aed6e"
       }
     },
     {
