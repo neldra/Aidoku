@@ -603,6 +603,7 @@
 		E841C5FE2D0C1985DC8904A5 /* KokoroTextChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FF85164BB03263DF6CBCD64 /* KokoroTextChunker.swift */; };
 		020784B72F8A24FA8DB0DDCD /* KokoroModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */; };
 		A992DE0F08242174950D50B5 /* KokoroSpeechBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */; };
+		4AFCB78B0EB2636659571931 /* SpeechBackendRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DE4AD83A9C6B90D16D5FEA /* SpeechBackendRegistry.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1099,6 +1100,7 @@
 		5FF85164BB03263DF6CBCD64 /* KokoroTextChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroTextChunker.swift; path = iOS/UI/Reader/TTS/KokoroTextChunker.swift; sourceTree = SOURCE_ROOT; };
 		86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroModelManager.swift; path = iOS/UI/Reader/TTS/KokoroModelManager.swift; sourceTree = SOURCE_ROOT; };
 		05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroSpeechBackend.swift; path = iOS/UI/Reader/TTS/KokoroSpeechBackend.swift; sourceTree = SOURCE_ROOT; };
+		E2DE4AD83A9C6B90D16D5FEA /* SpeechBackendRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeechBackendRegistry.swift; path = iOS/UI/Reader/TTS/SpeechBackendRegistry.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -1402,6 +1404,7 @@
 				5FF85164BB03263DF6CBCD64 /* KokoroTextChunker.swift */,
 				86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */,
 				05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */,
+				E2DE4AD83A9C6B90D16D5FEA /* SpeechBackendRegistry.swift */,
 			);
 			indentWidth = 4;
 			sourceTree = "<group>";
@@ -3021,6 +3024,7 @@
 				E841C5FE2D0C1985DC8904A5 /* KokoroTextChunker.swift in Sources */,
 				020784B72F8A24FA8DB0DDCD /* KokoroModelManager.swift in Sources */,
 				A992DE0F08242174950D50B5 /* KokoroSpeechBackend.swift in Sources */,
+				4AFCB78B0EB2636659571931 /* SpeechBackendRegistry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

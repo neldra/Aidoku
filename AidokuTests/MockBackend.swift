@@ -5,8 +5,14 @@ import Foundation
 /// and lets tests drive lifecycle callbacks deterministically by utteranceID.
 @MainActor
 final class MockBackend: SpeechSynthesisBackend {
-    let id = "mock"
-    let displayName = "Mock"
+    let id: String
+    let displayName: String
+
+    init(id: String = "mock", displayName: String = "Mock") {
+        self.id = id
+        self.displayName = displayName
+    }
+
     var availability: BackendAvailability = .ready
     weak var delegate: SpeechBackendDelegate?
     var isSpeaking = false

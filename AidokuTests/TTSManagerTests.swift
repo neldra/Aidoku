@@ -479,6 +479,23 @@ private final class StubProvider: TTSChapterProvider {
         #expect(abs(manager.calibratorCurrentWPMForTesting - 60.0) < 0.0001)
     }
 
+    @Test("switching backend mid-playback restarts the paragraph on the new backend")
+    func switchBackendRestartsOnNewBackend() {
+        let system = MockBackend(id: "system")
+        let kokoro = MockBackend(id: "kokoro")
+        let registry = SpeechBackendRegistry(backends: [system, kokoro], systemBackend: system)
+        let manager = TTSManager(backend: system, registry: registry, now: Date.init)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A\n\nB\n\nC", startIndex: 0)
+        #expect(system.spoken == ["A"])
+
+        manager.currentBackendID = "kokoro"
+
+        // The current paragraph restarts on the new backend, exactly once.
+        #expect(kokoro.spoken == ["A"])
+    }
+
     @Test("interrupted utterance does not feed the calibrator")
     func calibratorIgnoresInterruptedUtterance() async {
         var ticks = 0

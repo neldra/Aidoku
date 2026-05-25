@@ -30,7 +30,7 @@ protocol TTSChapterProvider: AnyObject {
 @MainActor
 final class TTSManager: NSObject, ObservableObject {
     static let shared: TTSManager = {
-        let manager = TTSManager()
+        let manager = TTSManager(registry: SpeechBackendRegistry())
         manager.announceChapterTitles =
             UserDefaults.standard.object(forKey: announceChapterKey) as? Bool ?? true
         return manager
@@ -53,7 +53,10 @@ final class TTSManager: NSObject, ObservableObject {
     @Published var voiceIdentifier: String {
         didSet {
             guard oldValue != voiceIdentifier else { return }
-            UserDefaults.standard.set(voiceIdentifier, forKey: Self.voiceKey)
+            UserDefaults.standard.set(
+                voiceIdentifier,
+                forKey: Self.voiceKey(forBackendID: currentBackendID)
+            )
             applyConfigChange(resetCalibration: true)
         }
     }
@@ -65,12 +68,45 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
-    static let voiceKey = "Reader.ttsVoiceIdentifier"
+    /// Legacy global voice key — migrated into the per-backend `.system` key
+    /// by `migrateVoicePreferenceIfNeeded()`. Kept only as the migration source.
+    static let legacyVoiceKey = "Reader.ttsVoiceIdentifier"
     static let rateKey = "Reader.ttsRateMultiplier"
     static let highlightKey = "Reader.ttsHighlight"
     static let announceChapterKey = "Reader.ttsAnnounceChapter"
+    /// Selected backend id ("system" | "kokoro").
+    static let backendKey = "Reader.ttsBackend"
 
-    private let backend: any SpeechSynthesisBackend
+    /// Per-backend voice preference key, e.g. "Reader.ttsVoice.system".
+    static func voiceKey(forBackendID id: String) -> String {
+        "Reader.ttsVoice.\(id)"
+    }
+
+    /// One-time migration: copy the legacy global voice into the per-backend
+    /// `.system` key. Idempotent — runs only while the new key is absent.
+    static func migrateVoicePreferenceIfNeeded() {
+        let defaults = UserDefaults.standard
+        let systemKey = voiceKey(forBackendID: "system")
+        guard defaults.string(forKey: systemKey) == nil,
+              let legacy = defaults.string(forKey: legacyVoiceKey)
+        else { return }
+        defaults.set(legacy, forKey: systemKey)
+    }
+
+    private var backend: any SpeechSynthesisBackend
+    /// Non-nil when constructed via `init(registry:)` (the production path).
+    /// Tests use `init(backend:)` and leave this nil — backend switching is
+    /// then a no-op.
+    private let registry: SpeechBackendRegistry?
+    /// Selected backend id, persisted to `backendKey`. Drives the settings
+    /// engine picker.
+    @Published var currentBackendID: String {
+        didSet {
+            guard oldValue != currentBackendID else { return }
+            UserDefaults.standard.set(currentBackendID, forKey: Self.backendKey)
+            switchBackend(toID: currentBackendID)
+        }
+    }
     /// Monotonic counter; each `speak` mints the next id.
     private var utteranceCounter = 0
     /// Clock used for utterance-duration sampling. Injectable so tests can
@@ -144,14 +180,21 @@ final class TTSManager: NSObject, ObservableObject {
         )
     }
 
+    /// Designated initializer. `backend` is the initially-active backend;
+    /// `registry`, when present, enables backend switching.
     init(
-        backend: (any SpeechSynthesisBackend)? = nil,
-        now: @escaping () -> Date = Date.init
+        backend: any SpeechSynthesisBackend,
+        registry: SpeechBackendRegistry?,
+        now: @escaping () -> Date
     ) {
-        self.backend = backend ?? SystemSpeechBackend()
+        Self.migrateVoicePreferenceIfNeeded()
+        self.backend = backend
+        self.registry = registry
         self.now = now
         let defaults = UserDefaults.standard
-        self.voiceIdentifier = defaults.string(forKey: Self.voiceKey)
+        self.currentBackendID = backend.id
+        self.voiceIdentifier = defaults.string(forKey: Self.voiceKey(forBackendID: backend.id))
+            ?? backend.defaultVoiceID
             ?? AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())?.identifier
             ?? ""
         let storedRate = defaults.object(forKey: Self.rateKey) as? Float
@@ -161,6 +204,51 @@ final class TTSManager: NSObject, ObservableObject {
         self.calibrator.reset(forVoice: voiceIdentifier)
         self.registerInterruptionObserver()
         self.registerRouteChangeObserver()
+    }
+
+    /// Test seam: drive the manager with an explicit backend, no registry.
+    convenience init(
+        backend: (any SpeechSynthesisBackend)? = nil,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.init(backend: backend ?? SystemSpeechBackend(), registry: nil, now: now)
+    }
+
+    /// Production path: resolve the active backend from the registry.
+    convenience init(
+        registry: SpeechBackendRegistry,
+        now: @escaping () -> Date = Date.init
+    ) {
+        let preferred = UserDefaults.standard.string(forKey: Self.backendKey)
+        let active = registry.currentBackend(preferredID: preferred)
+        self.init(backend: active, registry: registry, now: now)
+    }
+
+    // MARK: - Settings surface
+
+    /// Backends the settings engine picker can offer. Empty when there is no
+    /// registry (the test seam) — the picker then stays hidden.
+    func selectableBackends() -> [any SpeechSynthesisBackend] {
+        registry?.selectableBackends() ?? []
+    }
+
+    /// Voice catalog of the currently-active backend, for the settings picker.
+    func activeBackendVoices() -> [SpeechVoice] {
+        backend.availableVoices()
+    }
+
+    /// The Kokoro model manager (iOS 16+), for the settings download row.
+    @available(iOS 16, *)
+    var kokoroModelManager: KokoroModelManager? {
+        registry?.kokoroModelManager
+    }
+
+    /// Re-resolve the active backend against the current `currentBackendID`
+    /// preference. Call after a backend that was previously unavailable (e.g.
+    /// Kokoro mid-download) becomes ready, so the user's selection takes effect
+    /// without an app restart. A no-op if the resolved backend is already active.
+    func reapplyBackendPreference() {
+        switchBackend(toID: currentBackendID)
     }
 
     // MARK: - Lifecycle
@@ -609,8 +697,8 @@ final class TTSManager: NSObject, ObservableObject {
     /// Apply a voice or rate change: optionally reset per-voice calibration,
     /// restart the current utterance, and refresh Now Playing so the
     /// lockscreen scrub bar reflects the new pacing even while paused.
-    /// AVSpeechUtterance bakes rate/voice in at construction, so the only
-    /// way to apply them mid-paragraph is to issue a fresh utterance.
+    /// Rate, voice, and backend changes take effect by re-issuing the current
+    /// paragraph — backends apply configuration at synthesis time, not retroactively.
     private func applyConfigChange(resetCalibration: Bool) {
         if resetCalibration { calibrator.reset(forVoice: voiceIdentifier) }
         restartCurrent()
@@ -626,6 +714,39 @@ final class TTSManager: NSObject, ObservableObject {
         } else if isPlaying, backend.isSpeaking {
             speakCurrent()
         }
+    }
+
+    /// Switch the active synthesis backend. Resolves the new backend from the
+    /// registry (preferred-if-ready, else the system backend), swaps it in,
+    /// adopts its saved per-backend voice, and — if TTS was playing — restarts
+    /// the current paragraph on the new backend. A no-op without a registry
+    /// (the test seam) or when the resolved backend is already active.
+    ///
+    /// `currentBackendID` records the user's *preferred* backend; it may differ
+    /// from the active `backend` when the preference resolves to a fallback
+    /// (e.g. Kokoro is selected but not yet downloaded).
+    private func switchBackend(toID id: String) {
+        guard let registry else { return }
+        let resolved = registry.currentBackend(preferredID: id)
+        guard resolved.id != backend.id else { return }
+        let wasPlaying = isPlaying
+        currentUtteranceID = nil
+        backend.stop()
+        backend.delegate = nil
+        backend = resolved
+        backend.delegate = self
+        clearUtteranceSample()
+        // Adopt the new backend's saved voice. The didSet persists the value
+        // and resets calibration; the didSet's restartCurrent is a no-op here
+        // (the freshly swapped-in backend is not speaking), so playback is
+        // driven explicitly below.
+        let stored = UserDefaults.standard.string(forKey: Self.voiceKey(forBackendID: resolved.id))
+        voiceIdentifier = stored ?? resolved.defaultVoiceID ?? ""
+        if wasPlaying {
+            activateAudioSession()
+            speakCurrent()
+        }
+        updateNowPlaying()
     }
 
     private func activateCurrent(playing shouldPlay: Bool) {
