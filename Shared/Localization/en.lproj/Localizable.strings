@@ -559,6 +559,19 @@
 "TEXT_LINE_SPACING" = "Line Spacing";
 "TEXT_HORIZONTAL_PADDING" = "Horizontal Padding";
 
+// Text-to-Speech
+"TEXT_TO_SPEECH" = "Text-to-Speech";
+"TTS_VOICE" = "Voice";
+"TTS_SPEECH_RATE" = "Speech Rate";
+"TTS_ANNOUNCE_CHAPTER_TITLES" = "Announce Chapter Titles";
+"TTS_START" = "Start listening";
+"TTS_PAUSE" = "Pause listening";
+"TTS_RESUME" = "Resume listening";
+"TTS_SHOW_ALL_LANGUAGES" = "Show All Languages";
+"TTS_QUALITY_ENHANCED" = "Enhanced";
+"TTS_QUALITY_PREMIUM" = "Premium";
+"TTS_BACKEND_SYSTEM" = "Apple";
+
 // Backups
 "BACKUPS" = "Backups";
 "BACKUP_NAME" = "Backup Name";
