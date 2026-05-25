@@ -76,4 +76,37 @@ protocol SpeechSynthesisBackend: AnyObject {
 
     /// Warm-up hook. No-op for backends that need none.
     func prepare() async
+
+    /// `true` if the backend can apply rate changes to audio that's already
+    /// in flight (or already synthesized). When `false` (the default), the
+    /// caller restarts the current utterance to make the new rate take effect.
+    var supportsLiveRateChange: Bool { get }
+
+    /// Apply a new playback rate to the in-flight audio. Default
+    /// implementation is a no-op — backends that report
+    /// `supportsLiveRateChange == true` must implement this.
+    func setLiveRate(_ rate: Float)
+
+    /// Speculatively synthesize `text` and cache the result so a later
+    /// `speak(text:..., voiceID:...)` with the same arguments plays
+    /// immediately. Default no-op; backends with batch synthesis
+    /// (Supertonic-3) override to overlap synth of N+1 with playback of N.
+    func prefetch(text: String, voiceID: String?)
+
+    /// Drop one specific cached prefetch (used when a paragraph is skipped or
+    /// the voice changes). Default no-op.
+    func cancelPrefetch(text: String, voiceID: String?)
+
+    /// Drop everything cached. Called from `TTSManager.stop` and on voice
+    /// changes. Default no-op.
+    func cancelAllPrefetches()
+}
+
+extension SpeechSynthesisBackend {
+    var supportsLiveRateChange: Bool { false }
+    func setLiveRate(_ rate: Float) {}
+
+    func prefetch(text: String, voiceID: String?) {}
+    func cancelPrefetch(text: String, voiceID: String?) {}
+    func cancelAllPrefetches() {}
 }

@@ -32,18 +32,24 @@ final class KokoroModelManager: ObservableObject {
     private var downloadTask: Task<Void, Never>?
 
     /// Injectable seams. `performDownload` reports 0...1 progress and throws on
-    /// failure; `checkInstalled` answers whether the model chain is on disk.
+    /// failure; `checkInstalled` answers whether the model chain is on disk
+    /// (async); `checkInstalledSync` is the synchronous flavor used at launch,
+    /// where we can't await before the backend has to resolve.
     private let performDownload: (@escaping @Sendable (Double) -> Void) async throws -> Void
     private let checkInstalled: () async -> Bool
+    private let checkInstalledSync: @MainActor () -> Bool
 
     init(
         performDownload: @escaping (@escaping @Sendable (Double) -> Void) async throws -> Void
             = KokoroModelManager.realDownload,
         checkInstalled: @escaping () async -> Bool
-            = KokoroModelManager.realCheckInstalled
+            = KokoroModelManager.realCheckInstalled,
+        checkInstalledSync: @escaping @MainActor () -> Bool
+            = KokoroModelManager.realCheckInstalledSync
     ) {
         self.performDownload = performDownload
         self.checkInstalled = checkInstalled
+        self.checkInstalledSync = checkInstalledSync
     }
 
     /// Projection consumed by `KokoroSpeechBackend.availability`.
@@ -65,6 +71,17 @@ final class KokoroModelManager: ObservableObject {
             if case .downloading = state { return }
             state = installed ? .ready : .notInstalled
         }
+    }
+
+    /// Synchronous variant of `refreshInstalledState`. Used during `TTSManager`
+    /// launch where we have to resolve the active backend before any `await`
+    /// would complete — otherwise the user's saved Kokoro preference falls back
+    /// to the system backend on every relaunch. The underlying `modelsArePresent`
+    /// is a filesystem-only check; no I/O wait. A no-op while a download is in
+    /// flight.
+    func refreshInstalledStateSync() {
+        if case .downloading = state { return }
+        state = checkInstalledSync() ? .ready : .notInstalled
     }
 
     func startDownload() {
@@ -163,6 +180,12 @@ final class KokoroModelManager: ObservableObject {
     /// filesystem presence check (mirrors the cache-hit logic in
     /// `KokoroAneResourceDownloader.ensureModels`).
     private static func realCheckInstalled() async -> Bool {
+        KokoroAneResourceDownloader.modelsArePresent(variant: .english)
+    }
+
+    /// Synchronous flavor of `realCheckInstalled` — the underlying
+    /// `modelsArePresent` is a sync filesystem check, no async required.
+    private static func realCheckInstalledSync() -> Bool {
         KokoroAneResourceDownloader.modelsArePresent(variant: .english)
     }
 }

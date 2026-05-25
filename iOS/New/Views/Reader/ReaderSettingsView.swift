@@ -433,10 +433,13 @@ private struct TTSReaderSettingsSection: View {
         chapterLanguage ?? Locale.current.languageCode ?? "en"
     }
 
-    /// Voices offered by the currently-active backend, language-filtered and
-    /// quality-sorted for display.
+    /// Voices offered by the *selected* (preferred) backend — follows the
+    /// engine picker rather than the resolved fallback, so picking "Neural
+    /// (Kokoro)" while it's mid-download shows Kokoro's voice catalog (with
+    /// the picker `.disabled` until Kokoro becomes ready). Language-filtered
+    /// and quality-sorted for display.
     private var displayedVoices: [SpeechVoice] {
-        let all = tts.activeBackendVoices()
+        let all = tts.selectedBackendVoices()
         let voices: [SpeechVoice]
         if showAllLanguages {
             voices = all
@@ -449,7 +452,7 @@ private struct TTSReaderSettingsSection: View {
                 voices = all
             } else {
                 // Keep the current selection visible even outside the filter.
-                let currentId = tts.voiceIdentifier
+                let currentId = tts.selectedBackendVoiceID
                 if !currentId.isEmpty,
                    !filtered.contains(where: { $0.id == currentId }),
                    let current = all.first(where: { $0.id == currentId }) {
@@ -495,14 +498,28 @@ private struct TTSReaderSettingsSection: View {
             }
 
             if #available(iOS 16, *) {
-                KokoroDownloadRow()
+                // Only show the download row for the neural backend the user has
+                // selected — saves screen space and avoids implying that *both*
+                // models need to be downloaded.
+                if tts.currentBackendID == "supertonic3" {
+                    Supertonic3DownloadRow()
+                } else if tts.currentBackendID == "kokoro" {
+                    KokoroDownloadRow()
+                }
             }
 
-            Picker(NSLocalizedString("TTS_VOICE"), selection: $tts.voiceIdentifier) {
+            Picker(
+                NSLocalizedString("TTS_VOICE"),
+                selection: Binding(
+                    get: { tts.selectedBackendVoiceID },
+                    set: { tts.selectedBackendVoiceID = $0 }
+                )
+            ) {
                 ForEach(displayedVoices, id: \.id) { voice in
                     Text(displayName(for: voice)).tag(voice.id)
                 }
             }
+            .disabled(!tts.selectedBackendIsReady)
 
             Toggle(NSLocalizedString("TTS_SHOW_ALL_LANGUAGES"), isOn: $showAllLanguages)
 
@@ -584,6 +601,60 @@ private struct KokoroDownloadRowBody: View {
             // A Kokoro selection made before the models were downloaded only
             // resolves to a fallback; once the download completes, re-apply the
             // preference so the engine activates without an app restart.
+            if newState == .ready {
+                TTSManager.shared.reapplyBackendPreference()
+            }
+        }
+    }
+}
+
+/// The Supertonic-3 model download row — mirrors `KokoroDownloadRow`.
+@available(iOS 16, *)
+private struct Supertonic3DownloadRow: View {
+    @ObservedObject private var tts = TTSManager.shared
+
+    var body: some View {
+        if let model = tts.supertonic3ModelManager {
+            Supertonic3DownloadRowBody(model: model)
+                .onAppear { model.refreshInstalledState() }
+        }
+    }
+}
+
+@available(iOS 16, *)
+private struct Supertonic3DownloadRowBody: View {
+    @ObservedObject var model: Supertonic3ModelManager
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .notInstalled:
+                Toggle(NSLocalizedString("TTS_SUPERTONIC3_WIFI_ONLY"), isOn: Binding(
+                    get: { model.wifiOnly },
+                    set: { model.wifiOnly = $0 }
+                ))
+                Button(NSLocalizedString("TTS_SUPERTONIC3_DOWNLOAD")) {
+                    model.startDownload()
+                }
+            case .downloading(let progress):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(NSLocalizedString("TTS_SUPERTONIC3_DOWNLOADING"))
+                    ProgressView(value: progress)
+                }
+                Button(NSLocalizedString("TTS_SUPERTONIC3_CANCEL"), role: .cancel) {
+                    model.cancelDownload()
+                }
+            case .ready:
+                EmptyView()
+            case .failed(let reason):
+                Text("\(NSLocalizedString("TTS_SUPERTONIC3_FAILED")): \(reason)")
+                    .foregroundStyle(.red)
+                Button(NSLocalizedString("TTS_SUPERTONIC3_RETRY")) {
+                    model.retry()
+                }
+            }
+        }
+        .onChange(of: model.state) { newState in
             if newState == .ready {
                 TTSManager.shared.reapplyBackendPreference()
             }

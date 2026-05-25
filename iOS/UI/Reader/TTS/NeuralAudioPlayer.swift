@@ -14,6 +14,11 @@ import AVFoundation
 final class NeuralAudioPlayer {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
+    /// Time-pitch unit between player and mixer. Lets us change the playback
+    /// rate mid-stream without re-synthesizing, and keeps pitch stable so
+    /// 1.5x doesn't sound like a chipmunk. Rate range is 1/32...32 (Apple);
+    /// we clamp to the same 0.5...2.0 window the settings slider exposes.
+    private let pitchUnit = AVAudioUnitTimePitch()
 
     /// Buffers handed to `schedule`, and buffers whose playback has completed.
     /// `onStreamEnd` fires once `endOfStream` is set and these are equal.
@@ -22,8 +27,15 @@ final class NeuralAudioPlayer {
     private var endOfStream = false
     private var onStreamEnd: (() -> Void)?
 
+    /// Playback rate. Applied live — changes take effect immediately on the
+    /// currently-playing buffer with no re-synthesis. Defaults to 1.0.
+    var rate: Float = 1.0 {
+        didSet { pitchUnit.rate = max(0.5, min(2.0, rate)) }
+    }
+
     init() {
         engine.attach(playerNode)
+        engine.attach(pitchUnit)
     }
 
     /// Convert raw fp32 PCM into an `AVAudioPCMBuffer`. `samples` is mono,
@@ -54,7 +66,12 @@ final class NeuralAudioPlayer {
     /// to the hardware rate).
     func schedule(_ buffer: AVAudioPCMBuffer) {
         if !engine.isRunning {
-            engine.connect(playerNode, to: engine.mainMixerNode, format: buffer.format)
+            // Chain: player → pitch → mixer. The pitch unit time-stretches at
+            // the player's input format and emits at the same rate; the mixer
+            // resamples to the hardware rate.
+            engine.connect(playerNode, to: pitchUnit, format: buffer.format)
+            engine.connect(pitchUnit, to: engine.mainMixerNode, format: buffer.format)
+            pitchUnit.rate = max(0.5, min(2.0, rate))
             try? engine.start()
         }
         scheduledCount += 1
@@ -72,10 +89,15 @@ final class NeuralAudioPlayer {
     }
 
     /// Stop playback, discard scheduled buffers, reset all counters. Safe to
-    /// call when nothing is playing.
+    /// call when nothing is playing. Deliberately does NOT call `engine.stop()`
+    /// because the iOS `audio` background mode requires the engine to be
+    /// continuously running to keep the app alive on a locked device — even a
+    /// brief engine.stop() → start() cycle between paragraphs lets iOS suspend
+    /// the app, which freezes pending CoreML synthesis on the next paragraph.
+    /// The engine keeps running (outputting silence) for the player's
+    /// lifetime; it's released when the backend deallocates.
     func stop() {
         playerNode.stop()
-        engine.stop()
         scheduledCount = 0
         playedCount = 0
         endOfStream = false

@@ -61,9 +61,19 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
         _ = try? await ensureEngine()
     }
 
+    var supportsLiveRateChange: Bool { true }
+
+    func setLiveRate(_ rate: Float) {
+        player.rate = rate
+    }
+
     func speak(text: String, voiceID: String?, rate: Float, utteranceID: Int) {
         synthesisTask?.cancel()
         player.stop()
+        // Synthesize at 1.0x and let the player's time-pitch unit handle the
+        // live rate. Decouples synthesis cost from the user's rate slider and
+        // lets mid-utterance changes take effect without re-synthesis.
+        player.rate = rate
         currentUtteranceID = utteranceID
         isSpeaking = true
         isPaused = false
@@ -84,7 +94,7 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
                 for chunk in chunks {
                     try Task.checkCancellation()
                     let result = try await engine.synthesizeDetailed(
-                        text: chunk, voice: voice, speed: rate
+                        text: chunk, voice: voice, speed: 1.0
                     )
                     try Task.checkCancellation()
                     guard self.currentUtteranceID == utteranceID else { return }

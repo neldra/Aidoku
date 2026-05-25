@@ -202,6 +202,11 @@ final class TTSManager: NSObject, ObservableObject {
         super.init()
         self.backend.delegate = self
         self.calibrator.reset(forVoice: voiceIdentifier)
+        // Neural backends pay a one-time anecompilerservice cold-start when
+        // their CoreML stages first load (≈16–20s for Supertonic-3, ≈10–20s
+        // for Kokoro on M-series). Warm them up off the main path before the
+        // user hits play.
+        prewarmActiveBackendIfNeeded()
         self.registerInterruptionObserver()
         self.registerRouteChangeObserver()
     }
@@ -220,6 +225,16 @@ final class TTSManager: NSObject, ObservableObject {
         now: @escaping () -> Date = Date.init
     ) {
         let preferred = UserDefaults.standard.string(forKey: Self.backendKey)
+        // Refresh Kokoro's installed state synchronously before resolving —
+        // otherwise on every relaunch the models on disk are not yet detected
+        // (`refreshInstalledState()` only runs from the settings download row's
+        // `.onAppear`), the registry falls back to the system backend, and the
+        // user's saved Kokoro preference is silently lost until they open
+        // Reader Settings.
+        if #available(iOS 16, *) {
+            registry.kokoroModelManager?.refreshInstalledStateSync()
+            registry.supertonic3ModelManager?.refreshInstalledStateSync()
+        }
         let active = registry.currentBackend(preferredID: preferred)
         self.init(backend: active, registry: registry, now: now)
     }
@@ -237,10 +252,70 @@ final class TTSManager: NSObject, ObservableObject {
         backend.availableVoices()
     }
 
+    /// The backend matching `currentBackendID` (the user's preference),
+    /// regardless of whether it's currently `.ready`. Differs from the active
+    /// `backend` when the preference has resolved to a fallback (e.g. Kokoro
+    /// selected but mid-download).
+    private var selectedBackend: (any SpeechSynthesisBackend)? {
+        registry?.backend(forID: currentBackendID)
+    }
+
+    /// Voices offered by the *selected* (preferred) backend, regardless of
+    /// whether it's currently ready. The settings voice picker uses these so
+    /// it follows the engine picker rather than the resolved fallback — paired
+    /// with `selectedBackendIsReady` driving the picker's `.disabled` state.
+    func selectedBackendVoices() -> [SpeechVoice] {
+        selectedBackend?.availableVoices() ?? []
+    }
+
+    /// Whether the selected (preferred) backend is `.ready`. Drives the
+    /// settings voice picker's `.disabled` state — picking a voice for a
+    /// backend that can't yet play wouldn't take effect.
+    var selectedBackendIsReady: Bool {
+        selectedBackend?.availability == .ready
+    }
+
+    /// Voice picker selection bound by the settings sheet. When the selected
+    /// backend equals the active backend (the usual case, picker enabled),
+    /// this is the live `voiceIdentifier`. When they differ — the selected
+    /// backend hasn't yet resolved to active (Kokoro mid-download, etc.) — it
+    /// reports the per-backend stored voice so the picker still shows the
+    /// correct selection. The picker is `.disabled` in that case, so the
+    /// setter normally only fires through the equal-backends branch.
+    var selectedBackendVoiceID: String {
+        get {
+            if currentBackendID == backend.id {
+                return voiceIdentifier
+            }
+            return UserDefaults.standard.string(
+                forKey: Self.voiceKey(forBackendID: currentBackendID)
+            ) ?? selectedBackend?.defaultVoiceID ?? ""
+        }
+        set {
+            if currentBackendID == backend.id {
+                // Selected == active: route through `voiceIdentifier`'s didSet
+                // for persistence + calibration reset + restart-on-change.
+                voiceIdentifier = newValue
+            } else {
+                // Disabled-picker fallback. Persist anyway for symmetry.
+                UserDefaults.standard.set(
+                    newValue,
+                    forKey: Self.voiceKey(forBackendID: currentBackendID)
+                )
+            }
+        }
+    }
+
     /// The Kokoro model manager (iOS 16+), for the settings download row.
     @available(iOS 16, *)
     var kokoroModelManager: KokoroModelManager? {
         registry?.kokoroModelManager
+    }
+
+    /// The Supertonic-3 model manager (iOS 16+), for the settings download row.
+    @available(iOS 16, *)
+    var supertonic3ModelManager: Supertonic3ModelManager? {
+        registry?.supertonic3ModelManager
     }
 
     /// Re-resolve the active backend against the current `currentBackendID`
@@ -363,6 +438,10 @@ final class TTSManager: NSObject, ObservableObject {
     func stop() {
         sessionRevision &+= 1
         backend.stop()
+        // Full-session stop also discards any prefetched audio (backend.stop
+        // deliberately doesn't, because it's called between paragraphs to
+        // make way for the next speak — we want the cache to survive there).
+        backend.cancelAllPrefetches()
         currentUtteranceID = nil
         currentUtteranceStartedAt = nil
         currentUtteranceWordCount = 0
@@ -691,17 +770,29 @@ final class TTSManager: NSObject, ObservableObject {
         let shouldContinuePlaying = isPlaying
         guard mutate() else { return }
         sessionRevision &+= 1
+        // Any prefetched buffer was speculative against the old cursor — drop
+        // it. The next handleStartedUtterance repopulates based on the new
+        // position.
+        backend.cancelAllPrefetches()
         activateCurrent(playing: shouldContinuePlaying)
     }
 
-    /// Apply a voice or rate change: optionally reset per-voice calibration,
-    /// restart the current utterance, and refresh Now Playing so the
-    /// lockscreen scrub bar reflects the new pacing even while paused.
-    /// Rate, voice, and backend changes take effect by re-issuing the current
-    /// paragraph — backends apply configuration at synthesis time, not retroactively.
+    /// Apply a voice or rate change. Voice changes always restart the current
+    /// utterance (the synthesized audio carries the voice character — no live
+    /// swap). Rate changes go through the backend's live path when supported
+    /// (neural backends time-stretch in flight via AVAudioUnitTimePitch); for
+    /// backends without a live path (AVSpeechSynthesizer bakes rate into the
+    /// utterance) we fall back to restart.
     private func applyConfigChange(resetCalibration: Bool) {
-        if resetCalibration { calibrator.reset(forVoice: voiceIdentifier) }
-        restartCurrent()
+        if resetCalibration {
+            calibrator.reset(forVoice: voiceIdentifier)
+            // Voice change invalidates any voice-keyed prefetch cache.
+            backend.cancelAllPrefetches()
+        }
+        backend.setLiveRate(rate)
+        if resetCalibration || !backend.supportsLiveRateChange {
+            restartCurrent()
+        }
         updateNowPlaying()
     }
 
@@ -747,6 +838,17 @@ final class TTSManager: NSObject, ObservableObject {
             speakCurrent()
         }
         updateNowPlaying()
+        prewarmActiveBackendIfNeeded()
+    }
+
+    /// Fire-and-forget `prepare()` on the active backend so the first
+    /// `speak()` doesn't pay the anecompilerservice cold-start. Idempotent;
+    /// safe to call repeatedly. A no-op for the system backend whose
+    /// `prepare()` returns immediately.
+    private func prewarmActiveBackendIfNeeded() {
+        guard backend.availability == .ready else { return }
+        let target = backend
+        Task { await target.prepare() }
     }
 
     private func activateCurrent(playing shouldPlay: Bool) {
@@ -884,6 +986,24 @@ final class TTSManager: NSObject, ObservableObject {
     private func handleStartedUtterance(utteranceID: Int) {
         guard isActive, currentUtteranceID == utteranceID else { return }
         currentUtteranceStartedAt = now()
+        // Kick off speculative synthesis of paragraph N+1 while N plays. For
+        // backends without a real prefetch impl (system, Kokoro currently),
+        // this is a no-op via the protocol's default. For Supertonic-3 it
+        // overlaps the N+1 synth with the N playback, eliminating the
+        // inter-paragraph gap.
+        schedulePrefetchForNextParagraph()
+    }
+
+    /// Look one paragraph ahead in the queue and tell the backend to start
+    /// synthesizing it now. Within-chapter only — cross-chapter lookahead
+    /// would need the async `ttsLoadNextChapter` path and isn't worth it for
+    /// v1 (the chapter boundary is also a natural pause point).
+    private func schedulePrefetchForNextParagraph() {
+        let nextAbs = queue.index + 1
+        guard nextAbs < queue.count else { return }
+        let nextParagraph = queue.paragraphs[nextAbs]
+        let voiceID = voiceIdentifier.isEmpty ? nil : voiceIdentifier
+        backend.prefetch(text: nextParagraph.spokenText, voiceID: voiceID)
     }
 
     /// Called when an utterance finishes naturally: advance, or load next chapter.
