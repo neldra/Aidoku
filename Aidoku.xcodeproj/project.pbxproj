@@ -601,6 +601,8 @@
 		30EA95652FC051B5000BFEDF /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 30EA95642FC051B5000BFEDF /* FluidAudio */; };
 		7EAE9EB56A065D0D0ECB5DCE /* NeuralAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CF04901C9FB775931C8328A /* NeuralAudioPlayer.swift */; };
 		E841C5FE2D0C1985DC8904A5 /* KokoroTextChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FF85164BB03263DF6CBCD64 /* KokoroTextChunker.swift */; };
+		020784B72F8A24FA8DB0DDCD /* KokoroModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */; };
+		A992DE0F08242174950D50B5 /* KokoroSpeechBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1095,6 +1097,8 @@
 		8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSManager.swift; path = iOS/UI/Reader/TTS/TTSManager.swift; sourceTree = SOURCE_ROOT; };
 		6CF04901C9FB775931C8328A /* NeuralAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NeuralAudioPlayer.swift; path = iOS/UI/Reader/TTS/NeuralAudioPlayer.swift; sourceTree = SOURCE_ROOT; };
 		5FF85164BB03263DF6CBCD64 /* KokoroTextChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroTextChunker.swift; path = iOS/UI/Reader/TTS/KokoroTextChunker.swift; sourceTree = SOURCE_ROOT; };
+		86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroModelManager.swift; path = iOS/UI/Reader/TTS/KokoroModelManager.swift; sourceTree = SOURCE_ROOT; };
+		05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroSpeechBackend.swift; path = iOS/UI/Reader/TTS/KokoroSpeechBackend.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -1396,6 +1400,8 @@
 				8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */,
 				6CF04901C9FB775931C8328A /* NeuralAudioPlayer.swift */,
 				5FF85164BB03263DF6CBCD64 /* KokoroTextChunker.swift */,
+				86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */,
+				05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */,
 			);
 			indentWidth = 4;
 			sourceTree = "<group>";
@@ -3013,6 +3019,8 @@
 				643AF950B661E1EF1C69677B /* TTSManager.swift in Sources */,
 				7EAE9EB56A065D0D0ECB5DCE /* NeuralAudioPlayer.swift in Sources */,
 				E841C5FE2D0C1985DC8904A5 /* KokoroTextChunker.swift in Sources */,
+				020784B72F8A24FA8DB0DDCD /* KokoroModelManager.swift in Sources */,
+				A992DE0F08242174950D50B5 /* KokoroSpeechBackend.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
