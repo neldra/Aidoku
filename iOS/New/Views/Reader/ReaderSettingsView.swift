@@ -419,15 +419,12 @@ private struct TTSReaderSettingsSection: View {
 
     @ObservedObject private var tts = TTSManager.shared
 
-    /// Local draft while the user drags the slider. Rate changes restart
-    /// the current utterance, so we only commit on slider release.
+    /// Local draft while the user drags the slider. Rate changes restart the
+    /// current utterance, so we only commit on slider release.
     @State private var draftRate: Float?
     @State private var showAllLanguages: Bool = false
 
-    private static let allVoices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice.speechVoices()
-
-    /// `tts.rate` is a normalized multiplier (1.0 = normal speed); the slider
-    /// and the displayed value operate directly in those units.
+    /// `tts.rate` is a normalized multiplier (1.0 = normal speed).
     private var currentRate: Float { draftRate ?? tts.rate }
 
     /// Falls back to the device language when the source doesn't tag the
@@ -436,26 +433,26 @@ private struct TTSReaderSettingsSection: View {
         chapterLanguage ?? Locale.current.languageCode ?? "en"
     }
 
-    private var displayedVoices: [AVSpeechSynthesisVoice] {
-        let all = Self.allVoices
-        let voices: [AVSpeechSynthesisVoice]
+    /// Voices offered by the currently-active backend, language-filtered and
+    /// quality-sorted for display.
+    private var displayedVoices: [SpeechVoice] {
+        let all = tts.activeBackendVoices()
+        let voices: [SpeechVoice]
         if showAllLanguages {
             voices = all
         } else {
             let code = filterLanguageCode
-            let filtered = all.filter { v in
-                v.language == code || v.language.hasPrefix("\(code)-")
+            let filtered = all.filter { voice in
+                voice.language == code || voice.language.hasPrefix("\(code)-")
             }
-            // Empty filter would leave the picker unusable; fall back to all.
             if filtered.isEmpty {
                 voices = all
             } else {
-                // Keep the user's currently-selected voice visible even if it
-                // sits outside the language filter.
+                // Keep the current selection visible even outside the filter.
                 let currentId = tts.voiceIdentifier
                 if !currentId.isEmpty,
-                   !filtered.contains(where: { $0.identifier == currentId }),
-                   let current = all.first(where: { $0.identifier == currentId }) {
+                   !filtered.contains(where: { $0.id == currentId }),
+                   let current = all.first(where: { $0.id == currentId }) {
                     voices = filtered + [current]
                 } else {
                     voices = filtered
@@ -463,43 +460,47 @@ private struct TTSReaderSettingsSection: View {
             }
         }
         return voices.sorted { lhs, rhs in
-            if lhs.quality.rawValue != rhs.quality.rawValue {
-                return lhs.quality.rawValue > rhs.quality.rawValue
-            }
-            if lhs.language != rhs.language {
-                return lhs.language < rhs.language
-            }
-            return lhs.name < rhs.name
+            if lhs.quality != rhs.quality { return lhs.quality > rhs.quality }
+            if lhs.language != rhs.language { return lhs.language < rhs.language }
+            return lhs.displayName < rhs.displayName
         }
     }
 
-    /// Apple bakes the quality marker into `voice.name` for non-default
-    /// voices (e.g. "Ava (Premium)", "Samantha (Enhanced)"). Strip it so we
-    /// can present quality consistently via our own suffix instead.
+    /// Apple bakes the quality marker into voice names ("Ava (Premium)"); our
+    /// own quality suffix replaces it.
     private func cleanName(_ raw: String) -> String {
         raw
             .replacingOccurrences(of: " (Premium)", with: "")
             .replacingOccurrences(of: " (Enhanced)", with: "")
     }
 
-    private func displayName(for voice: AVSpeechSynthesisVoice) -> String {
-        let base = "\(cleanName(voice.name)) (\(voice.language))"
+    private func displayName(for voice: SpeechVoice) -> String {
+        let base = "\(cleanName(voice.displayName)) (\(voice.language))"
         switch voice.quality {
-        case .premium:
-            return "\(base) — \(NSLocalizedString("TTS_QUALITY_PREMIUM"))"
-        case .enhanced:
-            return "\(base) — \(NSLocalizedString("TTS_QUALITY_ENHANCED"))"
-        default:
-            return base
+        case .premium: return "\(base) — \(NSLocalizedString("TTS_QUALITY_PREMIUM"))"
+        case .enhanced: return "\(base) — \(NSLocalizedString("TTS_QUALITY_ENHANCED"))"
+        case .standard: return base
         }
     }
 
     var body: some View {
         Section(String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("TEXT_TO_SPEECH"))) {
+            // Engine picker — hidden when only one backend exists (iOS 15).
+            if tts.selectableBackends().count > 1 {
+                Picker(NSLocalizedString("TTS_VOICE_ENGINE"), selection: $tts.currentBackendID) {
+                    ForEach(tts.selectableBackends(), id: \.id) { backend in
+                        Text(backend.displayName).tag(backend.id)
+                    }
+                }
+            }
+
+            if #available(iOS 16, *) {
+                KokoroDownloadRow()
+            }
+
             Picker(NSLocalizedString("TTS_VOICE"), selection: $tts.voiceIdentifier) {
-                ForEach(displayedVoices, id: \.identifier) { voice in
-                    Text(displayName(for: voice))
-                        .tag(voice.identifier)
+                ForEach(displayedVoices, id: \.id) { voice in
+                    Text(displayName(for: voice)).tag(voice.id)
                 }
             }
 
@@ -529,6 +530,63 @@ private struct TTSReaderSettingsSection: View {
             }
 
             Toggle(NSLocalizedString("TTS_ANNOUNCE_CHAPTER_TITLES"), isOn: $tts.announceChapterTitles)
+        }
+    }
+}
+
+/// The Kokoro model download row — reflects `KokoroModelManager` state.
+@available(iOS 16, *)
+private struct KokoroDownloadRow: View {
+    @ObservedObject private var tts = TTSManager.shared
+
+    var body: some View {
+        if let model = tts.kokoroModelManager {
+            KokoroDownloadRowBody(model: model)
+                .onAppear { model.refreshInstalledState() }
+        }
+    }
+}
+
+@available(iOS 16, *)
+private struct KokoroDownloadRowBody: View {
+    @ObservedObject var model: KokoroModelManager
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .notInstalled:
+                Toggle(NSLocalizedString("TTS_KOKORO_WIFI_ONLY"), isOn: Binding(
+                    get: { model.wifiOnly },
+                    set: { model.wifiOnly = $0 }
+                ))
+                Button(NSLocalizedString("TTS_KOKORO_DOWNLOAD")) {
+                    model.startDownload()
+                }
+            case .downloading(let progress):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(NSLocalizedString("TTS_KOKORO_DOWNLOADING"))
+                    ProgressView(value: progress)
+                }
+                Button(NSLocalizedString("TTS_KOKORO_CANCEL"), role: .cancel) {
+                    model.cancelDownload()
+                }
+            case .ready:
+                EmptyView()
+            case .failed(let reason):
+                Text("\(NSLocalizedString("TTS_KOKORO_FAILED")): \(reason)")
+                    .foregroundStyle(.red)
+                Button(NSLocalizedString("TTS_KOKORO_RETRY")) {
+                    model.retry()
+                }
+            }
+        }
+        .onChange(of: model.state) { newState in
+            // A Kokoro selection made before the models were downloaded only
+            // resolves to a fallback; once the download completes, re-apply the
+            // preference so the engine activates without an app restart.
+            if newState == .ready {
+                TTSManager.shared.reapplyBackendPreference()
+            }
         }
     }
 }
