@@ -51,6 +51,30 @@ import Testing
         #expect(manager.availability == .needsDownload)
     }
 
+    @Test("refreshInstalledStateSync flips to .ready synchronously when models are present")
+    func refreshSyncDetectsInstalled() {
+        let manager = KokoroModelManager(
+            performDownload: { _ in },
+            checkInstalled: { false },  // async path unused here
+            checkInstalledSync: { true }
+        )
+        #expect(manager.state == .notInstalled)
+        manager.refreshInstalledStateSync()
+        // No await — the launch path depends on this being synchronous.
+        #expect(manager.state == .ready)
+    }
+
+    @Test("refreshInstalledStateSync flips back to .notInstalled when the cache is gone")
+    func refreshSyncDetectsAbsent() {
+        let manager = KokoroModelManager(
+            performDownload: { _ in },
+            checkInstalled: { true },
+            checkInstalledSync: { false }
+        )
+        manager.refreshInstalledStateSync()
+        #expect(manager.state == .notInstalled)
+    }
+
     @Test("retry after a failed download reaches ready")
     func retryAfterFailure() async {
         struct Boom: Error {}

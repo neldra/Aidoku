@@ -571,6 +571,25 @@
 "TTS_QUALITY_ENHANCED" = "Enhanced";
 "TTS_QUALITY_PREMIUM" = "Premium";
 "TTS_BACKEND_SYSTEM" = "Apple";
+"TTS_BACKEND_KOKORO" = "Neural (Kokoro)";
+"TTS_KOKORO_VOICE_DEFAULT" = "Heart";
+"TTS_VOICE_ENGINE" = "Voice Engine";
+"TTS_KOKORO_DOWNLOAD" = "Download Neural Voices (~170 MB)";
+"TTS_KOKORO_DOWNLOADING" = "Downloading Neural Voices…";
+"TTS_KOKORO_WIFI_ONLY" = "Download on Wi-Fi Only";
+"TTS_KOKORO_CANCEL" = "Cancel Download";
+"TTS_KOKORO_RETRY" = "Retry Download";
+"TTS_KOKORO_FAILED" = "Download Failed";
+"TTS_KOKORO_NEEDS_WIFI" = "Connect to Wi-Fi to download neural voices.";
+"TTS_BACKEND_SUPERTONIC3" = "Neural (Supertonic)";
+"TTS_SUPERTONIC3_VOICE_DEFAULT" = "M1";
+"TTS_SUPERTONIC3_DOWNLOAD" = "Download Neural Voices (~400 MB)";
+"TTS_SUPERTONIC3_DOWNLOADING" = "Downloading Neural Voices…";
+"TTS_SUPERTONIC3_WIFI_ONLY" = "Download on Wi-Fi Only";
+"TTS_SUPERTONIC3_CANCEL" = "Cancel Download";
+"TTS_SUPERTONIC3_RETRY" = "Retry Download";
+"TTS_SUPERTONIC3_FAILED" = "Download Failed";
+"TTS_SUPERTONIC3_NEEDS_WIFI" = "Connect to Wi-Fi to download neural voices.";
 
 // Backups
 "BACKUPS" = "Backups";

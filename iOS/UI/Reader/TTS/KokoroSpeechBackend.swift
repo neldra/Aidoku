@@ -31,6 +31,13 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
     private var engineInitTask: Task<KokoroAneManager, Error>?
     private var synthesisTask: Task<Void, Never>?
     private var currentUtteranceID: Int?
+    private var g2pProvider: KokoroG2PProvider?
+
+    /// Minimum lexicon coverage at which the Misaki overlay is trusted to
+    /// dictate the whole sentence. Below this, we fall back to FluidAudio's
+    /// built-in whole-text G2P for that chunk (still gives us correct
+    /// pronunciation for OOV-heavy sentences via the existing BART path).
+    private static let misakiCoverageThreshold: Double = 0.5
 
     init(modelManager: KokoroModelManager) {
         self.modelManager = modelManager
@@ -90,11 +97,15 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
                 let engine = try await self.ensureEngine()
                 try Task.checkCancellation()
                 guard self.currentUtteranceID == utteranceID else { return }
+                let provider = self.resolveG2PProvider(for: engine)
                 self.delegate?.backendDidStart(utteranceID: utteranceID)
                 for chunk in chunks {
                     try Task.checkCancellation()
-                    let result = try await engine.synthesizeDetailed(
-                        text: chunk, voice: voice, speed: 1.0
+                    let result = try await Self.synthesize(
+                        chunk: chunk,
+                        engine: engine,
+                        provider: provider,
+                        voice: voice
                     )
                     try Task.checkCancellation()
                     guard self.currentUtteranceID == utteranceID else { return }
@@ -123,6 +134,31 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
         }
     }
 
+    private func resolveG2PProvider(for engine: KokoroAneManager) -> KokoroG2PProvider {
+        if let existing = g2pProvider { return existing }
+        let provider = MisakiKokoroG2PProvider(fluidAudio: engine)
+        g2pProvider = provider
+        return provider
+    }
+
+    private static func synthesize(
+        chunk: String,
+        engine: KokoroAneManager,
+        provider: KokoroG2PProvider,
+        voice: String
+    ) async throws -> KokoroAneSynthesisResult {
+        let g2p = try await provider.phonemize(chunk)
+        if g2p.coverage >= misakiCoverageThreshold && !g2p.phonemes.isEmpty {
+            return try await engine.synthesizeFromPhonemesDetailed(
+                g2p.phonemes, voice: voice, speed: 1.0
+            )
+        }
+        // Low coverage or empty Misaki output → FluidAudio's whole-text G2P.
+        return try await engine.synthesizeDetailed(
+            text: chunk, voice: voice, speed: 1.0
+        )
+    }
+
     func stop() {
         synthesisTask?.cancel()
         synthesisTask = nil
@@ -148,9 +184,29 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
         if let engine { return engine }
         if let engineInitTask { return try await engineInitTask.value }
         let task = Task { () throws -> KokoroAneManager in
+            // FluidAudio's default puts prosody/noise/tail on `.all`
+            // (CPU+GPU+ANE), letting the iOS scheduler pick. That works
+            // when our app is foreground or in lock-screen background (ANE
+            // is allocated to us). But when our app is backgrounded behind
+            // another foreground app, ANE goes to whoever's in front and
+            // iOS falls back to MPS Graph — which then crashes on
+            // KokoroProsody:
+            //   model.mil:148: error: 'mps.add' op requires the same
+            //   element type for all operands and results
+            //   MPSGraphUtilities.h:165: failed assertion `Type is
+            //   unranked.` → SIGABRT.
+            // Forcing `.aneOrAll` (= `.cpuAndNeuralEngine` on iOS 16+)
+            // keeps MPS out of the candidate set: when ANE is unavailable,
+            // fall back to CPU rather than to GPU/MPS.
+            let computeUnits = KokoroAneComputeUnits(
+                prosody: .aneOrAll,
+                noise: .aneOrAll,
+                tail: .aneOrAll
+            )
             let manager = KokoroAneManager(
                 variant: .english,
-                defaultVoice: KokoroAneVariant.english.defaultVoice
+                defaultVoice: KokoroAneVariant.english.defaultVoice,
+                computeUnits: computeUnits
             )
             try await manager.initialize()
             return manager

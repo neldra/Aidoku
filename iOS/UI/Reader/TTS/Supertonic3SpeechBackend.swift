@@ -264,7 +264,13 @@ final class Supertonic3SpeechBackend: SpeechSynthesisBackend {
         if let engine { return engine }
         if let engineInitTask { return try await engineInitTask.value }
         let task = Task { () throws -> Supertonic3Manager in
-            let manager = Supertonic3Manager()
+            // iOS forbids GPU command submission from background processes
+            // (`kIOGPUCommandBufferCallbackErrorBackgroundExecutionNotPermitted`).
+            // The `audio` background mode permits ANE and CPU work but not
+            // Metal/MPS. Exclude GPU so the Vocoder (MPS Graph) survives the
+            // device lock; the alternative is the app gets killed for failing
+            // to produce audio in the background.
+            let manager = Supertonic3Manager(computeUnits: .cpuAndNeuralEngine)
             try await manager.initialize()
             return manager
         }
