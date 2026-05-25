@@ -607,6 +607,7 @@
 		01AB3F1A2B3C4D5E6F7A8B01 /* Supertonic3ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AB3F1A2B3C4D5E6F7A8B02 /* Supertonic3ModelManager.swift */; };
 		01AB3F1A2B3C4D5E6F7A8B03 /* Supertonic3SpeechBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AB3F1A2B3C4D5E6F7A8B04 /* Supertonic3SpeechBackend.swift */; };
 		01AB3F1A2B3C4D5E6F7A8B05 /* Supertonic3_M1.json in Resources */ = {isa = PBXBuildFile; fileRef = 01AB3F1A2B3C4D5E6F7A8B06 /* Supertonic3_M1.json */; };
+		30EA96012FC051B5000BFEDF /* MisakiSwiftLite in Frameworks */ = {isa = PBXBuildFile; productRef = 30EA96002FC051B5000BFEDF /* MisakiSwiftLite */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1129,6 +1130,7 @@
 				FB7B7ED8278CE949001E6EAF /* ZIPFoundation in Frameworks */,
 				FB2C83992E43F074003CA85F /* SwiftSoup in Frameworks */,
 				30EA95652FC051B5000BFEDF /* FluidAudio in Frameworks */,
+				30EA96012FC051B5000BFEDF /* MisakiSwiftLite in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2417,6 +2419,7 @@
 				FBAED40B2E3A762800B81E74 /* SwiftUIIntrospect */,
 				FB2C83982E43F074003CA85F /* SwiftSoup */,
 				30EA95642FC051B5000BFEDF /* FluidAudio */,
+				30EA96002FC051B5000BFEDF /* MisakiSwiftLite */,
 			);
 			productName = "Aidoku (iOS)";
 			productReference = FB1B4835277CE1920056D02C /* Aidoku.app */;
@@ -2550,6 +2553,7 @@
 				FBAED40A2E3A762800B81E74 /* XCRemoteSwiftPackageReference "swiftui-introspect" */,
 				FB2C83972E43F074003CA85F /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				30EA95632FC051B5000BFEDF /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				30EA95FF2FC051B5000BFEDF /* XCRemoteSwiftPackageReference "misakiswift" */,
 			);
 			productRefGroup = FB1B4836277CE1920056D02C /* Products */;
 			projectDirPath = "";
@@ -3673,6 +3677,14 @@
 				revision = 6a90a5ff2cedaecd45fc13969e73815a8f4aed6e;
 			};
 		};
+		30EA95FF2FC051B5000BFEDF /* XCRemoteSwiftPackageReference "misakiswift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/neldra/misakiswift.git";
+			requirement = {
+				kind = revision;
+				revision = e46b87ad397c327bac488afd4817779421fb2fef;
+			};
+		};
 		FB171149296770CC00AD523D /* XCRemoteSwiftPackageReference "Nuke" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/kean/Nuke";
@@ -3803,6 +3815,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 30EA95632FC051B5000BFEDF /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		30EA96002FC051B5000BFEDF /* MisakiSwiftLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 30EA95FF2FC051B5000BFEDF /* XCRemoteSwiftPackageReference "misakiswift" */;
+			productName = MisakiSwiftLite;
 		};
 /* End XCSwiftPackageProductDependency section */
 
