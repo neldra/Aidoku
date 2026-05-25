@@ -1,0 +1,79 @@
+//
+//  SpeechSynthesisBackend.swift
+//  Aidoku
+//
+
+import Foundation
+
+/// Quality tier of a synthesis voice, for display and sorting.
+enum SpeechVoiceQuality: Int, Comparable {
+    case standard
+    case enhanced
+    case premium
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+/// A voice offered by a specific backend. Backend-scoped: a voice from one
+/// backend is not usable by another. The `id` is opaque to consumers and
+/// only meaningful to the backend that produced it.
+struct SpeechVoice: Identifiable, Hashable {
+    let id: String
+    let displayName: String
+    /// BCP-47 language tag, e.g. "en-US".
+    let language: String
+    let quality: SpeechVoiceQuality
+}
+
+/// Whether a backend can synthesize right now.
+enum BackendAvailability: Equatable {
+    case ready
+    case needsDownload
+    case downloading(progress: Double)
+    case unavailable(reason: String)
+}
+
+/// Receives utterance lifecycle callbacks from a backend. Implemented by
+/// `TTSManager`. `utteranceID` echoes the value passed to `speak` so a stale
+/// callback (from an utterance that was stopped and replaced) can be ignored.
+/// Always delivered on the main actor.
+@MainActor
+protocol SpeechBackendDelegate: AnyObject {
+    func backendDidStart(utteranceID: Int)
+    func backendDidFinish(utteranceID: Int)
+    func backendDidFail(utteranceID: Int, error: Error)
+}
+
+/// A pluggable text-to-speech engine. Each conformer owns its own audio
+/// playback. The control surface is called from the main actor; any async
+/// work is spawned internally and its callbacks hop back to the main actor.
+@MainActor
+protocol SpeechSynthesisBackend: AnyObject {
+    /// Stable identifier persisted in preferences, e.g. "system".
+    var id: String { get }
+    /// Human-readable name for settings UI.
+    var displayName: String { get }
+    /// Whether the backend can synthesize right now.
+    var availability: BackendAvailability { get }
+    /// Lifecycle callback sink. Set by `TTSManager`.
+    var delegate: SpeechBackendDelegate? { get set }
+
+    var isSpeaking: Bool { get }
+    var isPaused: Bool { get }
+
+    /// Speak `text` using the voice identified by `voiceID` (nil = the
+    /// backend's default voice) at `rate` (1.0 = normal pace). `utteranceID`
+    /// is echoed back in delegate callbacks for staleness checks.
+    func speak(text: String, voiceID: String?, rate: Float, utteranceID: Int)
+    func stop()
+    func pause()
+    func resume()
+
+    /// Identifier of the backend's default voice, or nil if it has none.
+    var defaultVoiceID: String? { get }
+    /// Full voice catalog for settings UI.
+    func availableVoices() -> [SpeechVoice]
+
+    /// Warm-up hook. No-op for backends that need none.
+    func prepare() async
+}
