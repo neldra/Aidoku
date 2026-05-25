@@ -597,6 +597,7 @@
 		43761130A866D39BCD7D5228 /* SpeechSynthesizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */; };
 		BD1FCE7F44BD13A73744BE3F /* SpeechSynthesisBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9FA16D015E7507CD96EA8E3 /* SpeechSynthesisBackend.swift */; };
 		B8658DED4969DAED1645DCB8 /* SystemSpeechBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FB5A07A5D1172F63886D064 /* SystemSpeechBackend.swift */; };
+		643AF950B661E1EF1C69677B /* TTSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1088,6 +1089,7 @@
 		F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeechSynthesizing.swift; path = iOS/UI/Reader/TTS/SpeechSynthesizing.swift; sourceTree = SOURCE_ROOT; };
 		B9FA16D015E7507CD96EA8E3 /* SpeechSynthesisBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeechSynthesisBackend.swift; path = iOS/UI/Reader/TTS/SpeechSynthesisBackend.swift; sourceTree = SOURCE_ROOT; };
 		4FB5A07A5D1172F63886D064 /* SystemSpeechBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SystemSpeechBackend.swift; path = iOS/UI/Reader/TTS/SystemSpeechBackend.swift; sourceTree = SOURCE_ROOT; };
+		8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TTSManager.swift; path = iOS/UI/Reader/TTS/TTSManager.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -1385,6 +1387,7 @@
 				F81A79C13141F75794FB6816 /* SpeechSynthesizing.swift */,
 				B9FA16D015E7507CD96EA8E3 /* SpeechSynthesisBackend.swift */,
 				4FB5A07A5D1172F63886D064 /* SystemSpeechBackend.swift */,
+				8CDF0ECAC7D9FCC891918C3B /* TTSManager.swift */,
 			);
 			indentWidth = 4;
 			sourceTree = "<group>";
@@ -2997,6 +3000,7 @@
 				43761130A866D39BCD7D5228 /* SpeechSynthesizing.swift in Sources */,
 				BD1FCE7F44BD13A73744BE3F /* SpeechSynthesisBackend.swift in Sources */,
 				B8658DED4969DAED1645DCB8 /* SystemSpeechBackend.swift in Sources */,
+				643AF950B661E1EF1C69677B /* TTSManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

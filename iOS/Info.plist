@@ -93,6 +93,7 @@
 		<string>remote-notification</string>
 		<string>processing</string>
 		<string>fetch</string>
+		<string>audio</string>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
