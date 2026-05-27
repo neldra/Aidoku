@@ -80,6 +80,29 @@ import Testing
         #expect(cal.sampleCount == 10)
     }
 
+    @Test("samples normalize to 1.0x reference by dividing out observed rate")
+    func ratesNormalize() {
+        var cal = WPMCalibrator(baselineWPM: 175, alpha: 0.3)
+        // 300 words in 60s observed at 1.5x rate. Raw observed = 300 WPM;
+        // normalized to the 1.0x baseline = 300 / 1.5 = 200 WPM. The
+        // estimator multiplies by current rate to project back.
+        let accepted = cal.recordSample(words: 300, durationSec: 60, observedAtRate: 1.5)
+        #expect(accepted)
+        #expect(abs(cal.currentWPM - 200) < 0.0001)
+        #expect(cal.sampleCount == 1)
+    }
+
+    @Test("zero or non-finite observedAtRate is rejected")
+    func invalidRateRejected() {
+        var cal = WPMCalibrator(baselineWPM: 175)
+        #expect(cal.recordSample(words: 200, durationSec: 60, observedAtRate: 0) == false)
+        #expect(cal.recordSample(words: 200, durationSec: 60, observedAtRate: -1) == false)
+        #expect(cal.recordSample(words: 200, durationSec: 60, observedAtRate: .nan) == false)
+        #expect(cal.recordSample(words: 200, durationSec: 60, observedAtRate: .infinity) == false)
+        #expect(cal.sampleCount == 0)
+        #expect(cal.currentWPM == 175)
+    }
+
     @Test("rate-bound nonsense inputs do not poison the running value")
     func nonsenseInputsDoNotPoison() {
         var cal = WPMCalibrator(baselineWPM: 175)

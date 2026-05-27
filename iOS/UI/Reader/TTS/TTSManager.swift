@@ -1056,7 +1056,8 @@ final class TTSManager: NSObject, ObservableObject {
         let durationSec = now().timeIntervalSince(startedAt)
         calibrator.recordSample(
             words: currentUtteranceWordCount,
-            durationSec: durationSec
+            durationSec: durationSec,
+            observedAtRate: Double(rate)
         )
         clearUtteranceSample()
     }

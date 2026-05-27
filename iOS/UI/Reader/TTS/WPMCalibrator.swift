@@ -7,9 +7,17 @@ import Foundation
 
 /// Self-tuning WPM estimator: feed it observed utterance durations and it
 /// returns a running estimate of how fast the active voice actually speaks
-/// at the user's current rate. Strategy is an exponentially-weighted moving
+/// at the 1.0x reference rate. Strategy is an exponentially-weighted moving
 /// average; resettable on voice change. Short utterances are filtered as
 /// noise (single-word paragraphs, pauses).
+///
+/// Samples are normalized to the 1.0x reference at recording time by
+/// dividing the raw observation by the rate it was observed at. Callers
+/// pass `observedAtRate: Double(rate)` to `recordSample`; `TTSEstimator`
+/// then projects to any current rate by multiplying back in. Without that
+/// normalization the rate would be double-counted (observed value already
+/// includes rate, estimator multiplies by rate again) and the lockscreen
+/// duration / scrub math would skew by `1/rate` after the first sample.
 struct WPMCalibrator {
     /// Weight applied to a new sample (old value keeps `1 - alpha`). The
     /// default 0.3 gives a ~3-sample warmup before observations dominate.
@@ -57,14 +65,31 @@ struct WPMCalibrator {
     /// Record a finished utterance. Discards samples that are too short to be
     /// reliable, or that would produce out-of-bounds WPM observations.
     ///
-    /// - Returns: `true` if the sample was accepted and the running value updated;
-    ///   `false` if it was filtered out (informational, for tests/logs).
+    /// - Parameters:
+    ///   - words: Word count of the spoken text.
+    ///   - durationSec: Wall-clock seconds the utterance took.
+    ///   - observedAtRate: Playback rate multiplier in effect during the
+    ///     observation. The raw observation is divided by this so the
+    ///     stored value is always WPM at the 1.0x reference. Defaults to
+    ///     `1.0` for callers that don't model rate (e.g. tests).
+    /// - Returns: `true` if the sample was accepted and the running value
+    ///   updated; `false` if it was filtered out (informational, for
+    ///   tests/logs).
     @discardableResult
-    mutating func recordSample(words: Int, durationSec: TimeInterval) -> Bool {
-        guard words > 0, durationSec.isFinite, durationSec >= minSampleDurationSec else {
+    mutating func recordSample(
+        words: Int,
+        durationSec: TimeInterval,
+        observedAtRate: Double = 1.0
+    ) -> Bool {
+        guard words > 0,
+              durationSec.isFinite,
+              durationSec >= minSampleDurationSec,
+              observedAtRate.isFinite,
+              observedAtRate > 0 else {
             return false
         }
-        let observed = Double(words) / (durationSec / 60.0)
+        let raw = Double(words) / (durationSec / 60.0)
+        let observed = raw / observedAtRate
         guard observed.isFinite, observed >= minObservedWPM, observed <= maxObservedWPM else {
             return false
         }

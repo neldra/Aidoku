@@ -462,6 +462,11 @@ private final class StubProvider: TTSChapterProvider {
         }
         let backend = MockBackend()
         let manager = TTSManager(backend: backend, now: clock)
+        // Pin the rate so the rate-normalization step in `recordSample` is
+        // deterministic; otherwise UserDefaults pollution from a sibling
+        // test that touched `Reader.ttsRateMultiplier` can make the observed
+        // WPM divide out to a different value.
+        manager.rate = 1.0
         let provider = StubProvider()
         let words = Array(repeating: "alpha", count: 60).joined(separator: " ")
         manager.start(provider: provider, chapterKey: "c1",
