@@ -5,6 +5,14 @@
 
 import Foundation
 import FluidAudio
+import OSLog
+
+// Disambiguates against Aidoku's own `Shared/Logging/Logger.swift` type,
+// which shadows the OSLog one when both modules are in scope.
+private let kokoroLog = os.Logger(
+    subsystem: "app.aidoku.Aidoku",
+    category: "KokoroSpeechBackend"
+)
 
 /// `SpeechSynthesisBackend` backed by FluidAudio's Kokoro neural TTS. Gated to
 /// iOS 16+ — the vendored FluidAudio fork's Kokoro path uses iOS-16 CoreML
@@ -102,12 +110,29 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
                 self.delegate?.backendDidStart(utteranceID: utteranceID)
                 for chunk in chunks {
                     try Task.checkCancellation()
-                    let result = try await Self.synthesize(
-                        chunk: chunk,
-                        engine: engine,
-                        provider: provider,
-                        voice: voice
-                    )
+                    let result: KokoroAneSynthesisResult
+                    do {
+                        result = try await Self.synthesize(
+                            chunk: chunk,
+                            engine: engine,
+                            provider: provider,
+                            voice: voice
+                        )
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        // One chunk failing in a long paragraph (most often an
+                        // OOV word routing through BART G2P that throws) used
+                        // to fall to the outer catch and call backendDidFail
+                        // for the whole utterance, which then cut whatever
+                        // earlier chunks were already playing. Log + skip the
+                        // failing chunk so the rest of the paragraph still
+                        // plays through.
+                        kokoroLog.error(
+                            "chunk synthesis failed; skipping. chunk=\(chunk, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                        )
+                        continue
+                    }
                     try Task.checkCancellation()
                     guard self.currentUtteranceID == utteranceID else { return }
                     if let buffer = NeuralAudioPlayer.makeBuffer(
