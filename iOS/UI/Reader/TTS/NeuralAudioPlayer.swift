@@ -26,6 +26,14 @@ final class NeuralAudioPlayer {
     private var playedCount = 0
     private var endOfStream = false
     private var onStreamEnd: (() -> Void)?
+    /// Bumped on every `stop()`. Each scheduled buffer's completion callback
+    /// captures the epoch at schedule time; `bufferDidFinish` drops the count
+    /// when the captured epoch no longer matches. Apple may fire
+    /// `.dataPlayedBack` for a partially-rendered buffer when `playerNode.stop()`
+    /// clears it (e.g. on the resume path after a Siri interruption), which
+    /// would otherwise leave `playedCount` one ahead of the next utterance's
+    /// `scheduledCount` and trip `fireEndIfDrained` before the new audio plays.
+    private var epoch: Int = 0
 
     /// Playback rate. Applied live — changes take effect immediately on the
     /// currently-playing buffer with no re-synthesis. Defaults to 1.0.
@@ -75,8 +83,9 @@ final class NeuralAudioPlayer {
             try? engine.start()
         }
         scheduledCount += 1
+        let bufferEpoch = epoch
         playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-            Task { @MainActor in self?.bufferDidFinish() }
+            Task { @MainActor in self?.bufferDidFinish(epoch: bufferEpoch) }
         }
     }
 
@@ -97,6 +106,7 @@ final class NeuralAudioPlayer {
     /// The engine keeps running (outputting silence) for the player's
     /// lifetime; it's released when the backend deallocates.
     func stop() {
+        epoch &+= 1
         playerNode.stop()
         scheduledCount = 0
         playedCount = 0
@@ -113,7 +123,8 @@ final class NeuralAudioPlayer {
         fireEndIfDrained()
     }
 
-    private func bufferDidFinish() {
+    private func bufferDidFinish(epoch bufferEpoch: Int) {
+        guard bufferEpoch == epoch else { return }
         playedCount += 1
         fireEndIfDrained()
     }
