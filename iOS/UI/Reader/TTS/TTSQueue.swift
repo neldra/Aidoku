@@ -69,7 +69,10 @@ struct TTSQueue {
         index = Self.clamp(newIndex, count: paragraphs.count)
     }
 
-    /// Append a following chapter's paragraphs, renumbering ids to stay contiguous.
+    /// Append a following chapter's paragraphs, renumbering ids to stay
+    /// contiguous in the queue. `displayRange` is preserved verbatim — it's
+    /// already in chapter-local coordinates (relative to the new chapter's
+    /// display layer), independent of where this chapter lands in the queue.
     mutating func appendChapter(_ next: [TTSParagraph]) {
         let base = paragraphs.count
         paragraphs.append(contentsOf: next.enumerated().map { offset, p in
@@ -77,7 +80,8 @@ struct TTSQueue {
                 id: base + offset,
                 chapterKey: p.chapterKey,
                 displayMarkdown: p.displayMarkdown,
-                spokenText: p.spokenText
+                spokenText: p.spokenText,
+                displayRange: p.displayRange
             )
         })
     }

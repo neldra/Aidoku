@@ -49,8 +49,9 @@ struct NormalizedTextChapter: Equatable {
     /// straddlers produced by an over-cap comma split can have two.
     private let displayToSynthesisParts: [[SynthesisPart]]
 
-    /// Word count per *synthesis* paragraph — that's the unit the TTS
-    /// pipeline actually iterates. Index-aligned with `synthesisParagraphs`.
+    /// Word count per synthesis paragraph — the unit the TTS pipeline
+    /// iterates and the calibrator times. Index-aligned with
+    /// `synthesisParagraphs`.
     let paragraphWordCounts: [Int]
     /// Sum of `paragraphWordCounts`.
     let estimatedWordCount: Int
@@ -97,22 +98,21 @@ struct NormalizedTextChapter: Equatable {
         self.synthesisToDisplayParts = merged.synthesisToDisplayParts
         self.displayToSynthesisParts = merged.displayToSynthesisParts
 
-        // Phase 1 keeps the existing position-math contract: `paragraphs`,
-        // `paragraphWordCounts`, and the wordsRemaining / position math all
-        // operate on the *display* layer (the constructor input). The
-        // synthesis layer is added alongside as new data with its own
-        // mapping methods. Phase 2 will switch the engine to iterate the
-        // synthesis layer and migrate the math at the same time.
-        let counts = paragraphs.map { Self.wordCount($0) }
+        // The position-math layer (estimator, TextChapterPosition, queue)
+        // traverses synthesis units — that's the unit the engine actually
+        // speaks, so the calibrator's words-per-second has to match. The
+        // reader continues to render `displayParagraphs`; its highlight
+        // fans out across the active synthesis paragraph's `displayRange`.
+        let counts = merged.synthesisParagraphs.map { Self.wordCount($0) }
         self.paragraphWordCounts = counts
         self.estimatedWordCount = counts.reduce(0, +)
     }
 
-    /// Alias for `displayParagraphs`. Existing position-math consumers
-    /// (estimator, TextChapterPosition, queue) read `paragraphs` and the
-    /// Phase 1 promise is that their behaviour is unchanged. Phase 2 will
-    /// migrate them to `synthesisParagraphs`.
-    var paragraphs: [String] { displayParagraphs }
+    /// Alias for `synthesisParagraphs`. Estimator / position math / queue
+    /// callers read `paragraphs` and operate in synthesis units so the
+    /// calibrator's wpm matches what the synthesizer actually iterates.
+    /// The reader does NOT use this alias — it renders `displayParagraphs`.
+    var paragraphs: [String] { synthesisParagraphs }
 
     /// Whether the chapter has any narratable content.
     var isEmpty: Bool { paragraphs.isEmpty || estimatedWordCount == 0 }
@@ -196,9 +196,9 @@ struct NormalizedTextChapter: Equatable {
     // MARK: - Word-position math (operates on synthesis paragraphs)
 
     /// Number of words still ahead of (and including the remainder of)
-    /// `position`. Phase 1: operates on the display layer to preserve the
-    /// existing contract. Phase 2 will rework this against the synthesis
-    /// layer at the same time as it switches the queue.
+    /// `position`. Operates on the synthesis layer: `position`'s
+    /// `paragraphIndex` is a synthesis paragraph index — the unit the queue
+    /// and the engine's cursor both use.
     func wordsRemaining(from position: TextChapterPosition) -> Double {
         guard !paragraphs.isEmpty else { return 0 }
         let clamped = position.clamped(to: self)
@@ -221,7 +221,8 @@ struct NormalizedTextChapter: Equatable {
         return remaining
     }
 
-    /// Inverse of `wordsRemaining`. Phase 1 contract: display-layer.
+    /// Inverse of `wordsRemaining`. Returned position's `paragraphIndex` is
+    /// a synthesis paragraph index — match the unit the cursor consumes.
     func position(atWordsConsumed wordsConsumed: Double) -> TextChapterPosition {
         guard !paragraphs.isEmpty else { return .start }
         if wordsConsumed <= 0 { return .start }

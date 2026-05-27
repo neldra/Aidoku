@@ -19,7 +19,10 @@ import Testing
 
     @Test("paragraph word counts and totals are computed at init")
     func computedCounts() {
-        let ch = chapter(["one two", "three", "four five six"])
+        // Inputs are pre-terminated so the merge layer leaves them as
+        // three synthesis paragraphs (the unit `paragraphWordCounts`
+        // tracks). Without terminators they'd collapse into one.
+        let ch = chapter(["one two.", "three.", "four five six."])
         #expect(ch.paragraphWordCounts == [2, 1, 3])
         #expect(ch.estimatedWordCount == 6)
     }
@@ -40,20 +43,21 @@ import Testing
 
     @Test("wordsRemaining from start equals total")
     func wordsRemainingFromStart() {
-        let ch = chapter(["one two", "three", "four five six"])
+        let ch = chapter(["one two.", "three.", "four five six."])
         #expect(ch.wordsRemaining(from: .start) == 6)
     }
 
     @Test("wordsRemaining at end of chapter is zero")
     func wordsRemainingAtEnd() {
-        let ch = chapter(["one two", "three", "four five six"])
+        let ch = chapter(["one two.", "three.", "four five six."])
         #expect(ch.wordsRemaining(from: .end(of: ch)) == 0)
     }
 
     @Test("wordsRemaining interpolates within the current paragraph")
     func wordsRemainingMidParagraph() {
-        // "abcdefgh" = 1 word, 8 chars. Halfway through: 0.5 words remain in p0.
-        let ch = chapter(["abcdefgh", "next"])
+        // "abcdefg." = 1 word, 8 chars (period kept in char count, not
+        // word count). Halfway through (offset 4): 0.5 words remain in p0.
+        let ch = chapter(["abcdefg.", "next."])
         let mid = TextChapterPosition(paragraphIndex: 0, charOffsetInParagraph: 4)
         // Remaining: 0.5 (half of p0's 1 word) + 1 (all of p1).
         #expect(ch.wordsRemaining(from: mid) == 1.5)
@@ -61,14 +65,14 @@ import Testing
 
     @Test("wordsRemaining handles a position past the last paragraph by clamping")
     func wordsRemainingClampOverflow() {
-        let ch = chapter(["one two", "three"])
+        let ch = chapter(["one two.", "three."])
         let overflow = TextChapterPosition(paragraphIndex: 99, charOffsetInParagraph: 99)
         #expect(ch.wordsRemaining(from: overflow) == 0)
     }
 
     @Test("position(atWordsConsumed:) is monotonic and clamps")
     func positionFromWords() {
-        let ch = chapter(["one two", "three four"])  // 4 words total
+        let ch = chapter(["one two.", "three four."])  // 4 words total
         #expect(ch.position(atWordsConsumed: -5) == .start)
         #expect(ch.position(atWordsConsumed: 0) == .start)
         // 2 words consumed → boundary between p0 and p1. Canonical form is
@@ -81,7 +85,7 @@ import Testing
 
     @Test("position(atWordsConsumed:) lands at the start of each paragraph boundary")
     func paragraphStartFromConsumedWords() {
-        let ch = chapter(["one two three", "four five", "six seven eight nine"])
+        let ch = chapter(["one two three.", "four five.", "six seven eight nine."])
         // Cumulative word counts at the start of each paragraph: 0, 3, 5.
         var cumulative = 0
         for pIdx in 0..<ch.paragraphWordCounts.count {
@@ -111,10 +115,12 @@ import Testing
 
     @Test("paragraph with zero-length text contributes zero words")
     func zeroLengthParagraph() {
+        // Empty display paragraphs flush the merge accumulator without
+        // contributing a synthesis paragraph, so `paragraphWordCounts`
+        // (which is now per-synthesis) shows only the one real entry.
         let ch = chapter(["", "real words here", ""])
         #expect(ch.estimatedWordCount == 3)
-        #expect(ch.paragraphWordCounts == [0, 3, 0])
-        // wordsRemaining from start should still be 3.
+        #expect(ch.paragraphWordCounts == [3])
         #expect(ch.wordsRemaining(from: .start) == 3)
     }
 }

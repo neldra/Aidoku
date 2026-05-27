@@ -35,11 +35,14 @@ import Testing
 
     @Test("clamped pulls negative or overflowing values into bounds")
     func clampedBounds() {
-        let ch = chapter(["Hello", "World"])
+        // Terminators keep the merge layer from collapsing these two
+        // display paragraphs into a single synthesis paragraph (the unit
+        // `clamped` measures against).
+        let ch = chapter(["Hello.", "World."])
         let underflow = TextChapterPosition(paragraphIndex: -1, charOffsetInParagraph: -5)
         #expect(underflow.clamped(to: ch) == TextChapterPosition(paragraphIndex: 0, charOffsetInParagraph: 0))
         let overflow = TextChapterPosition(paragraphIndex: 10, charOffsetInParagraph: 999)
-        #expect(overflow.clamped(to: ch) == TextChapterPosition(paragraphIndex: 1, charOffsetInParagraph: 5))
+        #expect(overflow.clamped(to: ch) == TextChapterPosition(paragraphIndex: 1, charOffsetInParagraph: 6))
     }
 
     @Test("clamped against an empty chapter collapses to start")

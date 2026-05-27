@@ -8,13 +8,18 @@ import Testing
     }
 
     /// Build a chapter with a known exact word count for arithmetic tests.
+    /// Each generated paragraph ends with a period so the synthesis-layer
+    /// merge (which collapses unterminated fragments) leaves the paragraph
+    /// count intact — the math tests rely on a specific paragraph layout.
+    /// The terminator adds one character per paragraph but contributes no
+    /// words, so `wordCount` stays the requested value.
     private func chapter(words wordCount: Int, perParagraph: Int = 10) -> NormalizedTextChapter {
         let paragraphCount = (wordCount + perParagraph - 1) / perParagraph
         var paragraphs: [String] = []
         var remaining = wordCount
         for _ in 0..<paragraphCount {
             let w = min(perParagraph, remaining)
-            paragraphs.append(Array(repeating: "word", count: w).joined(separator: " "))
+            paragraphs.append(Array(repeating: "word", count: w).joined(separator: " ") + ".")
             remaining -= w
         }
         return chapter(paragraphs)

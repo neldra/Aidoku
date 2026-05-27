@@ -40,8 +40,8 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 1)
-        #expect(backend.spoken == ["B"])
+                      text: "A.\n\nB.\n\nC.", startIndex: 1)
+        #expect(backend.spoken == ["B."])
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(provider.activated == [1])
         #expect(manager.isActive && manager.isPlaying)
@@ -64,9 +64,9 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB", startIndex: 0)
+                      text: "A.\n\nB.", startIndex: 0)
         manager.handleUtteranceFinishedForTesting()   // A -> B
-        #expect(backend.spoken == ["A", "B"])
+        #expect(backend.spoken == ["A.", "B."])
         manager.handleUtteranceFinishedForTesting()   // no next chapter
         try? await Task.sleep(nanoseconds: 50_000_000)
         #expect(manager.isPlaying == false)
@@ -78,12 +78,15 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
-        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.")
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A", startIndex: 0)
         manager.handleUtteranceFinishedForTesting()
         try? await Task.sleep(nanoseconds: 50_000_000)
-        #expect(backend.spoken == ["A", "X"])
+        // Single-paragraph "A" doesn't merge (nothing to merge with), so it
+        // stays without a terminator; the multi-paragraph next chapter does
+        // need to be terminated to keep its synthesis paragraphs separate.
+        #expect(backend.spoken == ["A", "X."])
         #expect(manager.currentChapterKey == "c2")
     }
 
@@ -92,7 +95,7 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
-        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.")
         provider.nextChapterDelay = 50_000_000
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A", startIndex: 0)
@@ -111,19 +114,19 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
-        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.")
         provider.nextChapterDelay = 50_000_000
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A", startIndex: 0)
 
         manager.handleUtteranceFinishedForTesting()
-        manager.userDidNavigate(toChapterKey: "c5", text: "M\n\nN")
+        manager.userDidNavigate(toChapterKey: "c5", text: "M.\n\nN.")
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         #expect(manager.currentChapterKey == "c5")
         #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
-        #expect(backend.spoken == ["A", "M"])
+        #expect(backend.spoken == ["A", "M."])
         #expect(provider.activated == [0, 0])
     }
 
@@ -132,7 +135,7 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         manager.start(provider: StubProvider(), chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 0)
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
         manager.skipForward()
         #expect(manager.currentParagraphIndexForTesting == 1)
         manager.skipBackward()
@@ -145,7 +148,7 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 1)
+                      text: "A.\n\nB.\n\nC.", startIndex: 1)
         manager.stop()
 
         manager.pause()
@@ -158,7 +161,7 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.isActive == false)
         #expect(manager.isPlaying == false)
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(backend.spoken == ["B"])
+        #expect(backend.spoken == ["B."])
         #expect(provider.activated == [1])
     }
 
@@ -168,21 +171,21 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 0)
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
         manager.pause()
 
         manager.skipForward()
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
         #expect(manager.isPlaying == false)
-        #expect(backend.spoken == ["A"])
+        #expect(backend.spoken == ["A."])
         #expect(provider.activated == [0, 1])
 
         manager.skipBackward()
         #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
         #expect(manager.isPlaying == false)
-        #expect(backend.spoken == ["A"])
+        #expect(backend.spoken == ["A."])
         #expect(provider.activated == [0, 1, 0])
     }
 
@@ -191,7 +194,7 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         manager.start(provider: StubProvider(), chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 0)
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
         manager.pause()
         manager.skipForward()
 
@@ -199,7 +202,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
-        #expect(backend.spoken == ["A", "B"])
+        #expect(backend.spoken == ["A.", "B."])
         #expect(manager.isPlaying)
     }
 
@@ -209,13 +212,13 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 1)
+                      text: "A.\n\nB.\n\nC.", startIndex: 1)
 
         manager.rate = manager.rate == 1.5 ? 1.0 : 1.5
 
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
-        #expect(backend.spoken == ["B", "B"])
+        #expect(backend.spoken == ["B.", "B."])
         #expect(provider.activated == [1, 1])
         #expect(manager.isPlaying)
     }
@@ -226,7 +229,7 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 1)
+                      text: "A.\n\nB.\n\nC.", startIndex: 1)
         let stoppedID = backend.utteranceIDs[0]
 
         manager.rate = manager.rate == 1.5 ? 1.0 : 1.5
@@ -236,7 +239,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
-        #expect(backend.spoken == ["B", "B"])
+        #expect(backend.spoken == ["B.", "B."])
         #expect(provider.activated == [1, 1])
 
         backend.simulateFinish(utteranceID: backend.utteranceIDs[1])
@@ -244,7 +247,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentParagraphIndexForTesting == 2)
         #expect(manager.currentLocalIndex == 2)
-        #expect(backend.spoken == ["B", "B", "C"])
+        #expect(backend.spoken == ["B.", "B.", "C."])
         #expect(provider.activated == [1, 1, 2])
     }
 
@@ -254,14 +257,14 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 1)
+                      text: "A.\n\nB.\n\nC.", startIndex: 1)
         manager.pause()
 
         manager.rate = manager.rate == 1.5 ? 1.0 : 1.5
 
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(manager.currentLocalIndex == 1)
-        #expect(backend.spoken == ["B"])
+        #expect(backend.spoken == ["B."])
         #expect(provider.activated == [1])
         #expect(manager.isPlaying == false)
     }
@@ -272,7 +275,7 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let first = StubProvider()
         manager.start(provider: first, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 0)
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
         manager.skipForward()
         let second = StubProvider()
         manager.reattach(provider: second)
@@ -295,7 +298,7 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let first = StubProvider()
         manager.start(provider: first, chapterKey: "c1",
-                      text: "A\n\nB\n\nC\n\nD", startIndex: 0)
+                      text: "A.\n\nB.\n\nC.\n\nD.", startIndex: 0)
         manager.skipForward()
         let other = StubProvider()
         manager.detach(provider: other)
@@ -312,12 +315,12 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 2)
-        #expect(backend.spoken == ["C"])
-        manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
+                      text: "A.\n\nB.\n\nC.", startIndex: 2)
+        #expect(backend.spoken == ["C."])
+        manager.userDidNavigate(toChapterKey: "c5", text: "X.\n\nY.")
         #expect(manager.currentChapterKey == "c5")
         #expect(manager.currentParagraphIndexForTesting == 0)
-        #expect(backend.spoken == ["C", "X"])
+        #expect(backend.spoken == ["C.", "X."])
         #expect(provider.activated == [2, 0])
     }
 
@@ -327,15 +330,15 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 2)
+                      text: "A.\n\nB.\n\nC.", startIndex: 2)
         manager.pause()
 
-        manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
+        manager.userDidNavigate(toChapterKey: "c5", text: "X.\n\nY.")
 
         #expect(manager.currentChapterKey == "c5")
         #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
-        #expect(backend.spoken == ["C"])
+        #expect(backend.spoken == ["C."])
         #expect(provider.activated == [2, 0])
         #expect(manager.isPlaying == false)
     }
@@ -344,7 +347,7 @@ private final class StubProvider: TTSChapterProvider {
     func navInactive() {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
-        manager.userDidNavigate(toChapterKey: "c5", text: "X\n\nY")
+        manager.userDidNavigate(toChapterKey: "c5", text: "X.\n\nY.")
         #expect(backend.spoken.isEmpty)
         #expect(manager.isActive == false)
     }
@@ -354,9 +357,9 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         manager.start(provider: StubProvider(), chapterKey: "c1",
-                      text: "A\n\nB", startIndex: 0)
+                      text: "A.\n\nB.", startIndex: 0)
         manager.userDidNavigate(toChapterKey: "empty", text: " \n\n ")
-        #expect(backend.spoken == ["A"])
+        #expect(backend.spoken == ["A."])
         #expect(manager.isActive == false)
         #expect(manager.isPlaying == false)
     }
@@ -366,7 +369,7 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
-        provider.nextChapter = (chapterKey: "c2", text: "X\n\nY")
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.")
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A", startIndex: 0)
         manager.pause()
@@ -387,9 +390,9 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         let provider = StubProvider()
-        provider.previousChapter = (chapterKey: "c0", text: "X\n\nY")
+        provider.previousChapter = (chapterKey: "c0", text: "X.\n\nY.")
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB", startIndex: 0)
+                      text: "A.\n\nB.", startIndex: 0)
         manager.pause()
 
         manager.skipToPreviousChapter()
@@ -398,7 +401,7 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.currentChapterKey == "c0")
         #expect(manager.currentParagraphIndexForTesting == 0)
         #expect(manager.currentLocalIndex == 0)
-        #expect(backend.spoken == ["A"])
+        #expect(backend.spoken == ["A."])
         #expect(provider.activated == [0, 0])
         #expect(manager.isPlaying == false)
     }
@@ -408,10 +411,10 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: MockBackend())
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB", startIndex: 0)
+                      text: "A.\n\nB.", startIndex: 0)
         #expect(manager.novelTitleForTesting == "Novel")
         #expect(manager.currentChapterTitleForTesting == "c1")
-        manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY")
+        manager.userDidNavigate(toChapterKey: "c2", text: "X.\n\nY.")
         #expect(manager.currentChapterTitleForTesting == "c2")
     }
 
@@ -419,9 +422,9 @@ private final class StubProvider: TTSChapterProvider {
     func progressIsChapterLocal() {
         let manager = TTSManager(backend: MockBackend())
         manager.start(provider: StubProvider(), chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 2)
+                      text: "A.\n\nB.\n\nC.", startIndex: 2)
         #expect(manager.chapterProgressForTesting == 1)             // last paragraph of c1
-        manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY\n\nZ")
+        manager.userDidNavigate(toChapterKey: "c2", text: "X.\n\nY.\n\nZ.")
         #expect(manager.chapterProgressForTesting == 0)             // reset at the top of c2
     }
 
@@ -432,12 +435,12 @@ private final class StubProvider: TTSChapterProvider {
         manager.announceChapterTitles = true
         let provider = StubProvider()              // ttsChapterTitle returns the key
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB", startIndex: 0)
-        #expect(backend.spoken == ["c1. A"])         // title precedes the first paragraph
+                      text: "A.\n\nB.", startIndex: 0)
+        #expect(backend.spoken == ["c1. A."])         // title precedes the first paragraph
         manager.skipForward()
-        #expect(backend.spoken == ["c1. A", "B"])    // no re-announce within the chapter
-        manager.userDidNavigate(toChapterKey: "c2", text: "X\n\nY")
-        #expect(backend.spoken == ["c1. A", "B", "c2. X"])  // announced on chapter change
+        #expect(backend.spoken == ["c1. A.", "B."])    // no re-announce within the chapter
+        manager.userDidNavigate(toChapterKey: "c2", text: "X.\n\nY.")
+        #expect(backend.spoken == ["c1. A.", "B.", "c2. X."])  // announced on chapter change
     }
 
     @Test("chapter announcement is off by default for the test initializer")
@@ -445,8 +448,8 @@ private final class StubProvider: TTSChapterProvider {
         let backend = MockBackend()
         let manager = TTSManager(backend: backend)
         manager.start(provider: StubProvider(), chapterKey: "c1",
-                      text: "A\n\nB", startIndex: 0)
-        #expect(backend.spoken == ["A"])
+                      text: "A.\n\nB.", startIndex: 0)
+        #expect(backend.spoken == ["A."])
     }
 
     @Test("calibrator records a sample after didStart -> didFinish on the same utterance")
@@ -492,13 +495,13 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: system, registry: registry, now: Date.init)
         let provider = StubProvider()
         manager.start(provider: provider, chapterKey: "c1",
-                      text: "A\n\nB\n\nC", startIndex: 0)
-        #expect(system.spoken == ["A"])
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
+        #expect(system.spoken == ["A."])
 
         manager.currentBackendID = "kokoro"
 
         // The current paragraph restarts on the new backend, exactly once.
-        #expect(kokoro.spoken == ["A"])
+        #expect(kokoro.spoken == ["A."])
     }
 
     @Test("interrupted utterance does not feed the calibrator")

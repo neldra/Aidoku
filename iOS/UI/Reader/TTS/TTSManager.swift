@@ -136,6 +136,13 @@ final class TTSManager: NSObject, ObservableObject {
     /// whenever `queue.current?.chapterKey` changes. Feeds the time estimator
     /// and scrub/skip handlers.
     private var currentNormalizedChapter: NormalizedTextChapter?
+    /// Cached normalized chapters keyed by chapterKey. Populated at every
+    /// queue ingestion path (start / userDidNavigate / loadNext / loadPrev)
+    /// where we have the original chapter text. `refreshNormalizedChapterIfNeeded`
+    /// looks the current key up instead of rebuilding from the queue's
+    /// already-merged synthesis spokenText (which would re-feed pre-merged
+    /// output back into the merge layer).
+    private var normalizedChapterCache: [String: NormalizedTextChapter] = [:]
     private var calibrator = WPMCalibrator()
     /// Character offset into the next paragraph utterance — set by
     /// mid-paragraph seeks (lockscreen scrub / ±15s) and consumed once by
@@ -343,14 +350,19 @@ final class TTSManager: NSObject, ObservableObject {
         text: String,
         startIndex: Int
     ) {
-        let paragraphs = TTSText.paragraphs(chapterKey: chapterKey, text: text)
-        guard !paragraphs.isEmpty else {
+        let bundle = TTSText.chapterBundle(
+            chapterKey: chapterKey,
+            text: text,
+            chapterTitle: provider.ttsChapterTitle(forKey: chapterKey)
+        )
+        guard !bundle.synthesisParagraphs.isEmpty else {
             stop()
             return
         }
         sessionRevision &+= 1
         self.provider = provider
-        queue = TTSQueue(paragraphs: paragraphs, startIndex: startIndex)
+        queue = TTSQueue(paragraphs: bundle.synthesisParagraphs, startIndex: startIndex)
+        normalizedChapterCache = [chapterKey: bundle.normalizedChapter]
         currentNormalizedChapter = nil
         refreshNormalizedChapterIfNeeded()
         isActive = true
@@ -498,6 +510,8 @@ final class TTSManager: NSObject, ObservableObject {
         lastAnnouncedChapterKey = nil
         pendingCharOffset = 0
         activeCharOffset = 0
+        currentNormalizedChapter = nil
+        normalizedChapterCache.removeAll()
         deactivateAudioSession()
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = nil
@@ -765,23 +779,19 @@ final class TTSManager: NSObject, ObservableObject {
         )
     }
 
-    /// Rebuild `currentNormalizedChapter` when the cursor crosses into a
-    /// different chapter than the cached one.
+    /// Swap `currentNormalizedChapter` to the entry the cursor is now in.
+    /// The chapter was populated into `normalizedChapterCache` at the queue-
+    /// ingestion call site that owned the source text (start / userDidNavigate
+    /// / loadNext / loadPrev) — rebuilding here from the queue's already-
+    /// merged synthesis spokenText would re-feed pre-merged output into the
+    /// merge layer and corrupt the position math.
     private func refreshNormalizedChapterIfNeeded() {
         guard let key = queue.current?.chapterKey else {
             currentNormalizedChapter = nil
             return
         }
         if currentNormalizedChapter?.id == key { return }
-        let paragraphs = queue.paragraphs
-            .filter { $0.chapterKey == key }
-            .map(\.spokenText)
-        let title = provider?.ttsChapterTitle(forKey: key) ?? ""
-        currentNormalizedChapter = NormalizedTextChapter(
-            id: key,
-            title: title,
-            paragraphs: paragraphs
-        )
+        currentNormalizedChapter = normalizedChapterCache[key]
     }
 
     /// Move the cursor to `position` within the current chapter, mirroring
@@ -1106,12 +1116,17 @@ final class TTSManager: NSObject, ObservableObject {
             guard self.isActive,
                   self.sessionRevision == revision,
                   self.currentChapterKey == finishedChapterKey else { return }
-            let more = TTSText.paragraphs(chapterKey: next.chapterKey, text: next.text)
-            guard !more.isEmpty else {
+            let bundle = TTSText.chapterBundle(
+                chapterKey: next.chapterKey,
+                text: next.text,
+                chapterTitle: self.provider?.ttsChapterTitle(forKey: next.chapterKey) ?? ""
+            )
+            guard !bundle.synthesisParagraphs.isEmpty else {
                 self.stop()
                 return
             }
-            self.queue.appendChapter(more)
+            self.normalizedChapterCache[next.chapterKey] = bundle.normalizedChapter
+            self.queue.appendChapter(bundle.synthesisParagraphs)
             if self.queue.advance() != nil {
                 self.activateCurrent(playing: shouldContinuePlaying)
             } else {
@@ -1153,9 +1168,14 @@ final class TTSManager: NSObject, ObservableObject {
             defer { self.loadingChapterNav = false }
             guard let prev = await self.provider?.ttsLoadPreviousChapter() else { return }
             guard self.isActive, self.sessionRevision == revision else { return }
-            let paras = TTSText.paragraphs(chapterKey: prev.chapterKey, text: prev.text)
-            guard !paras.isEmpty else { return }
-            self.queue = TTSQueue(paragraphs: paras, startIndex: 0)
+            let bundle = TTSText.chapterBundle(
+                chapterKey: prev.chapterKey,
+                text: prev.text,
+                chapterTitle: self.provider?.ttsChapterTitle(forKey: prev.chapterKey) ?? ""
+            )
+            guard !bundle.synthesisParagraphs.isEmpty else { return }
+            self.queue = TTSQueue(paragraphs: bundle.synthesisParagraphs, startIndex: 0)
+            self.normalizedChapterCache = [prev.chapterKey: bundle.normalizedChapter]
             self.currentNormalizedChapter = nil
             self.refreshNormalizedChapterIfNeeded()
             self.activateCurrent(playing: shouldContinuePlaying)
@@ -1184,13 +1204,18 @@ final class TTSManager: NSObject, ObservableObject {
     /// during a live session — user navigation is authoritative.
     func userDidNavigate(toChapterKey chapterKey: String, text: String) {
         guard isActive else { return }
-        let paragraphs = TTSText.paragraphs(chapterKey: chapterKey, text: text)
-        guard !paragraphs.isEmpty else {
+        let bundle = TTSText.chapterBundle(
+            chapterKey: chapterKey,
+            text: text,
+            chapterTitle: provider?.ttsChapterTitle(forKey: chapterKey) ?? ""
+        )
+        guard !bundle.synthesisParagraphs.isEmpty else {
             stop()
             return
         }
         sessionRevision &+= 1
-        queue = TTSQueue(paragraphs: paragraphs, startIndex: 0)
+        queue = TTSQueue(paragraphs: bundle.synthesisParagraphs, startIndex: 0)
+        normalizedChapterCache = [chapterKey: bundle.normalizedChapter]
         currentNormalizedChapter = nil
         pendingCharOffset = 0
         refreshNormalizedChapterIfNeeded()
