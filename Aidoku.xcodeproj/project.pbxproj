@@ -3690,7 +3690,7 @@
 			repositoryURL = "https://github.com/neldra/misakiswift.git";
 			requirement = {
 				kind = revision;
-				revision = e46b87ad397c327bac488afd4817779421fb2fef;
+				revision = 3db3fc9a2d4a572ef4e38139ab599bade1677036;
 			};
 		};
 		FB171149296770CC00AD523D /* XCRemoteSwiftPackageReference "Nuke" */ = {
