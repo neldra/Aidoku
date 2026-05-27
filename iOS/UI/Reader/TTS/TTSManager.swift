@@ -160,6 +160,14 @@ final class TTSManager: NSObject, ObservableObject {
     /// AVAudioSession route-change observer (headphone/AirPods/Bluetooth
     /// disconnect). Kept alive for the singleton's lifetime.
     private var routeChangeObserver: NSObjectProtocol?
+    /// `UIApplication.willResignActiveNotification` observer. Deferring
+    /// session deactivation to backgrounding (instead of doing it inline on
+    /// `pause()`) follows Apple's guidance: deactivating mid-foreground is
+    /// known to cause resume-playback issues, so we keep the session active
+    /// while the app is foreground (engine just pauses in place) and only
+    /// release it when the app backgrounds, which is also when iOS reads
+    /// the session state to update the lockscreen icon.
+    private var willResignActiveObserver: NSObjectProtocol?
     /// Serial queue for AVAudioSession activation/deactivation. `setActive` is
     /// a synchronous, blocking call — deactivation measures ~580ms — so it must
     /// not run on the main thread (it froze the reader's play/pause UI). Serial
@@ -209,6 +217,7 @@ final class TTSManager: NSObject, ObservableObject {
         prewarmActiveBackendIfNeeded()
         self.registerInterruptionObserver()
         self.registerRouteChangeObserver()
+        self.registerWillResignActiveObserver()
     }
 
     /// Test seam: drive the manager with an explicit backend, no registry.
@@ -358,59 +367,94 @@ final class TTSManager: NSObject, ObservableObject {
         // Reactivate the audio session in case a pause deactivated it.
         // Safe to call when already active.
         activateAudioSession()
-        // Re-issue the current paragraph rather than trusting the synthesizer's
-        // state: a system interruption can leave AVSpeechSynthesizer
-        // mid-utterance, and the interruption/route handlers deliberately never
-        // command it (doing so deadlocks Apple's TextToSpeech framework — see
-        // pauseForSystemAudioEvent). speakCurrent() stops the synth cleanly and
-        // re-speaks, from this safe (non-interruption) context.
+        if backend.supportsInterruptPause, backend.isPaused {
+            // Neural backend was paused mid-utterance by pauseForSystemAudioEvent.
+            // Resume in place — no re-synth, audio picks up at the exact sample
+            // where Siri cut in.
+            backend.resume()
+            isPlaying = true
+            updateNowPlaying()
+            return
+        }
+        // System backend (or any backend that doesn't preserve interrupt
+        // state): re-issue the current paragraph. speakCurrent() stops the
+        // synth cleanly and re-speaks from this safe (non-interruption) context.
         speakCurrent()
     }
 
     /// User-initiated pause (toolbar button, lock-screen pauseCommand).
+    ///
+    /// Two-axis behaviour:
+    ///
+    /// - **Backend state**: for backends that support in-place pause (neural
+    ///   ones backed by `AVAudioEngine`), call `backend.pause()` so the
+    ///   utterance keeps its position and `play()` can `backend.resume()`
+    ///   instantly. For backends that don't (`AVSpeechSynthesizer`), tear
+    ///   down via `backend.stop()` — resume on those re-issues the paragraph
+    ///   from `activeCharOffset` via `speakCurrent()`.
+    ///
+    /// - **Audio-session lifecycle**: per Apple's documented pattern, iOS
+    ///   reads the session's active state (not `MPNowPlayingInfoCenter
+    ///   .playbackState`, which is macOS-only) to drive the lockscreen
+    ///   play/pause icon. But deactivating mid-foreground causes
+    ///   resume-playback issues. So: if the app is foreground we keep the
+    ///   session active and defer deactivation to
+    ///   `handleAppWillResignActive`. If the app is already backgrounded
+    ///   (e.g. lockscreen pauseCommand), deactivate inline so the lockscreen
+    ///   icon flips right away.
+    ///
+    /// Drops the in-flight calibration sample either way — the paused
+    /// interval would otherwise be baked into the observed paragraph
+    /// duration.
     func pause() {
         guard isActive else { return }
         sessionRevision &+= 1
-        // Stop the synth and deactivate the audio session. While the session
-        // is active, iOS dispatches pauseCommand for every play/pause gesture
-        // regardless of MPNowPlayingInfoCenter.playbackState, and the
-        // lock-screen icon stays on the pause glyph. Deactivating is the signal
-        // iOS reads. Resume reactivates the session and re-issues the current
-        // paragraph from activeCharOffset via speakCurrent. This is a
-        // user-driven call (no interruption in flight), so commanding the synth
-        // synchronously here is safe.
-        backend.stop()
-        pendingCharOffset = activeCharOffset
-        currentUtteranceID = nil
-        // Deactivate off the main thread (see audioSessionQueue). The session
-        // still gets torn down — the lock-screen needs that — it just no
-        // longer blocks the UI for ~580ms.
-        audioSessionQueue.async {
-            try? AVAudioSession.sharedInstance().setActive(false)
+        clearUtteranceSample()
+        if backend.supportsInterruptPause {
+            backend.pause()
+        } else {
+            backend.stop()
+            pendingCharOffset = activeCharOffset
+            currentUtteranceID = nil
         }
         pausedByUser = true
-        // Drop the in-flight sample so a resume->finish doesn't bake the
-        // paused wall-clock interval into the observed duration.
-        clearUtteranceSample()
         isPlaying = false
+        if UIApplication.shared.applicationState != .active {
+            // Backgrounded already — lockscreen needs the session-inactive
+            // signal now to flip its icon to "play".
+            audioSessionQueue.async {
+                try? AVAudioSession.sharedInstance().setActive(false)
+            }
+        }
         updateNowPlaying()
     }
 
-    /// Logical pause for a system audio event — an interruption beginning, or
-    /// the output route disappearing. Deliberately does NOT call into
-    /// AVSpeechSynthesizer: issuing a synth control call synchronously from an
-    /// AVAudioSession notification handler can deadlock inside Apple's
-    /// TextToSpeech framework while it concurrently processes the same event
-    /// (observed: the main thread wedged permanently in pauseSpeaking()). The
-    /// system has already removed our audio output; the synthesizer is
-    /// re-commanded only later, from a safe context — play() re-issues the
-    /// current paragraph via speakCurrent().
+    /// Pause for a system audio event — an interruption beginning, or the
+    /// output route disappearing. Two paths:
+    ///
+    /// - **Neural backends** (`supportsInterruptPause == true`): call
+    ///   `backend.pause()`, which pauses the `AVAudioPlayerNode` in place.
+    ///   `play()` later calls `backend.resume()` and audio picks up where
+    ///   the system cut in. The utterance and its `currentUtteranceID` stay
+    ///   live so the eventual natural `didFinish` still flows through.
+    /// - **System backend** (`AVSpeechSynthesizer`): logical-only state
+    ///   change; `pauseSpeaking()` from inside this notification handler
+    ///   deadlocks Apple's TextToSpeech framework (observed: main thread
+    ///   wedged permanently). `play()` re-issues the paragraph from
+    ///   `activeCharOffset` via `speakCurrent()` instead.
+    ///
+    /// Either way the in-flight calibration sample is dropped — the paused
+    /// interval would otherwise be baked into the observed duration.
     private func pauseForSystemAudioEvent(suppressAutoResume: Bool) {
         guard isActive, isPlaying else { return }
         sessionRevision &+= 1
-        pendingCharOffset = activeCharOffset
-        currentUtteranceID = nil
         clearUtteranceSample()
+        if backend.supportsInterruptPause {
+            backend.pause()
+        } else {
+            pendingCharOffset = activeCharOffset
+            currentUtteranceID = nil
+        }
         if suppressAutoResume { pausedByUser = true }
         isPlaying = false
         updateNowPlaying()
@@ -552,6 +596,32 @@ final class TTSManager: NSObject, ObservableObject {
             Task { @MainActor [weak self] in
                 self?.handleRouteChange(note)
             }
+        }
+    }
+
+    /// Register once for the lifetime of the singleton. Fires when the app
+    /// resigns active (lock, switch to another app, system sheet on top).
+    private func registerWillResignActiveObserver() {
+        willResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleAppWillResignActive()
+            }
+        }
+    }
+
+    /// Deferred session deactivation per Apple's MPRemoteCommandCenter +
+    /// AVAudioSession pattern: when the app backgrounds while we're paused,
+    /// release the session so iOS flips the lockscreen icon to "play".
+    /// While playing, keep the session active — the `audio` background mode
+    /// requires it to keep producing audio on a locked device.
+    private func handleAppWillResignActive() {
+        guard isActive, !isPlaying else { return }
+        audioSessionQueue.async {
+            try? AVAudioSession.sharedInstance().setActive(false)
         }
     }
 
@@ -951,20 +1021,28 @@ final class TTSManager: NSObject, ObservableObject {
     }
 
     private func handleFinishedUtterance(utteranceID: Int) {
-        guard isActive, isPlaying, currentUtteranceID == utteranceID else { return }
+        // Don't gate on `isPlaying`: the new in-place pause path keeps the
+        // utterance live on the backend, so a buffer finishing the last
+        // sample at the same moment the user pauses still arrives here with
+        // a matching id. Advance the cursor regardless, but pass `isPlaying`
+        // through as the continue-playing flag so paused users don't
+        // suddenly hear the next paragraph start.
+        guard isActive, currentUtteranceID == utteranceID else { return }
         currentUtteranceID = nil
         recordCalibrationSampleIfAvailable()
-        handleUtteranceFinished()
+        handleUtteranceFinished(continuePlaying: isPlaying)
     }
 
     /// A backend reported a synthesis failure for `utteranceID`. v1 policy:
     /// drop the in-flight sample and advance past the failed paragraph so the
-    /// session keeps moving rather than stalling.
+    /// session keeps moving rather than stalling. Same `isPlaying`-as-flag
+    /// pattern as `handleFinishedUtterance` so a failure post-pause doesn't
+    /// resume audio against the user's intent.
     private func handleFailedUtterance(utteranceID: Int, error: Error) {
         guard isActive, currentUtteranceID == utteranceID else { return }
         currentUtteranceID = nil
         clearUtteranceSample()
-        handleUtteranceFinished()
+        handleUtteranceFinished(continuePlaying: isPlaying)
     }
 
     /// Feed the calibrator with the just-completed utterance's observed pace.

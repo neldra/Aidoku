@@ -77,6 +77,15 @@ protocol SpeechSynthesisBackend: AnyObject {
     /// Warm-up hook. No-op for backends that need none.
     func prepare() async
 
+    /// `true` if `pause()` / `resume()` can be safely invoked from inside an
+    /// `AVAudioSession.interruptionNotification` handler. `AVSpeechSynthesizer`
+    /// returns `false` because `pauseSpeaking()` / `continueSpeaking()`
+    /// deadlock when Apple's TextToSpeech framework is concurrently processing
+    /// the same interruption. Neural backends backed by `AVAudioEngine` return
+    /// `true` and let the TTS manager pick up exactly where the system cut in,
+    /// rather than re-issuing the paragraph from its first character.
+    var supportsInterruptPause: Bool { get }
+
     /// `true` if the backend can apply rate changes to audio that's already
     /// in flight (or already synthesized). When `false` (the default), the
     /// caller restarts the current utterance to make the new rate take effect.
@@ -103,6 +112,7 @@ protocol SpeechSynthesisBackend: AnyObject {
 }
 
 extension SpeechSynthesisBackend {
+    var supportsInterruptPause: Bool { false }
     var supportsLiveRateChange: Bool { false }
     func setLiveRate(_ rate: Float) {}
 

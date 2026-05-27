@@ -90,6 +90,10 @@ final class NeuralAudioPlayer {
     }
 
     func play() {
+        // After an audio-session interruption iOS pauses the engine but
+        // leaves connections intact. Restart it before `playerNode.play()`,
+        // which would otherwise no-op while the engine is paused.
+        if !engine.isRunning { try? engine.start() }
         if !playerNode.isPlaying { playerNode.play() }
     }
 

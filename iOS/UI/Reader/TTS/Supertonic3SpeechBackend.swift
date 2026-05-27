@@ -78,6 +78,7 @@ final class Supertonic3SpeechBackend: SpeechSynthesisBackend {
         _ = try? await ensureEngine()
     }
 
+    var supportsInterruptPause: Bool { true }
     var supportsLiveRateChange: Bool { true }
 
     func setLiveRate(_ rate: Float) {
