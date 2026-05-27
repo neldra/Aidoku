@@ -85,7 +85,7 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
         isSpeaking = true
         isPaused = false
         let voice = voiceID ?? defaultVoiceID ?? KokoroAneVariant.english.defaultVoice
-        let chunks = KokoroTextChunker.chunk(text)
+        let chunks = KokoroTextChunker.chunk(Self.normalizeForKokoro(text))
         guard !chunks.isEmpty else {
             isSpeaking = false
             delegate?.backendDidFinish(utteranceID: utteranceID)
@@ -132,6 +132,48 @@ final class KokoroSpeechBackend: SpeechSynthesisBackend {
                 self.delegate?.backendDidFail(utteranceID: utteranceID, error: error)
             }
         }
+    }
+
+    /// Rewrites that paper over two classes of Kokoro/Misaki text-handling
+    /// gaps before chunking. Apply additively when a new class shows up:
+    ///
+    /// 1. **Repeated punctuation.** Kokoro's prosody stage emits artifacts
+    ///    on runs of identical sentence-terminator tokens ("...", "!!!",
+    ///    "??", "——") because they aren't in the training distribution.
+    ///    Two of the runs get *substituted* into distinct vocab tokens
+    ///    that the model has seen — ASCII `...` → `…` (id 10), `--` →
+    ///    `—` (id 9). Everything else collapses to a single instance.
+    ///
+    /// 2. **Currency.** Misaki's retokenize requires NLTagger to classify
+    ///    `$` as `.otherWord` (matching its spaCy upstream), but
+    ///    NLTagger tags it as `.punctuation`, so the currency branch
+    ///    never fires and the whole `$N.MM` token is silently dropped.
+    ///    Expand to plain English here.
+    private static func normalizeForKokoro(_ text: String) -> String {
+        return text
+            // Currency: longer (with cents) first so the shorter match
+            // doesn't eat the dollar amount before the cents arrive.
+            .replacingOccurrences(
+                of: #"\$(\d+(?:,\d{3})*)\.(\d{2})\b"#,
+                with: "$1 dollars and $2 cents",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"\$(\d+(?:,\d{3})*)\b"#,
+                with: "$1 dollars",
+                options: .regularExpression
+            )
+            // Semantic substitution for ASCII ellipsis / dash runs.
+            .replacingOccurrences(of: #"\.{3,}"#, with: "…", options: .regularExpression)
+            .replacingOccurrences(of: #"-{2,}"#,  with: "—", options: .regularExpression)
+            // Defensive collapse of any remaining run of identical
+            // sentence punctuation. Catches "!!!", "???", ",,", ";;",
+            // and anything further that survives rules above.
+            .replacingOccurrences(
+                of: #"([!?,;:—…])\1+"#,
+                with: "$1",
+                options: .regularExpression
+            )
     }
 
     private func resolveG2PProvider(for engine: KokoroAneManager) -> KokoroG2PProvider {
