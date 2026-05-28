@@ -21,10 +21,13 @@ protocol TTSChapterProvider: AnyObject {
     func ttsLoadNextChapter() async -> (chapterKey: String, text: String)?
     /// Load the previous *text* chapter's paragraphs, or nil if none / not text.
     func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)?
-    /// The reader should highlight (and, if enabled, scroll to) this paragraph.
-    /// `localIndex` is 0-based *within `chapterKey`* (the reader renders one
-    /// chapter at a time, numbered from 0).
-    func ttsDidActivateParagraph(localIndex: Int, chapterKey: String)
+    /// The reader should highlight every display paragraph in
+    /// `localDisplayRange` (and, if enabled, scroll to the first one).
+    /// Indices are 0-based within `chapterKey` — the reader renders one
+    /// chapter at a time, numbered from 0. The range spans multiple display
+    /// paragraphs when the active synthesis paragraph merged width-wrapped
+    /// fragments, and is a single-index span otherwise.
+    func ttsDidActivateParagraphs(localDisplayRange: Range<Int>, chapterKey: String)
 }
 
 @MainActor
@@ -38,8 +41,12 @@ final class TTSManager: NSObject, ObservableObject {
 
     @Published private(set) var isActive = false
     @Published private(set) var isPlaying = false
-    /// Index within the current chapter (drives reader highlight).
-    @Published private(set) var currentLocalIndex = 0
+    /// Display-paragraph range the active utterance covers, chapter-local.
+    /// Drives the reader's highlight (every index in the range lights up)
+    /// and its auto-scroll target (the range's lower bound). `nil` when no
+    /// utterance is active. A merged synthesis paragraph produces a multi-
+    /// index range; an un-merged one produces a single-index span.
+    @Published private(set) var currentLocalDisplayRange: Range<Int>?
     @Published var artwork: UIImage?
     private var novelTitle = ""
     private var currentChapterTitle = ""
@@ -512,6 +519,7 @@ final class TTSManager: NSObject, ObservableObject {
         activeCharOffset = 0
         currentNormalizedChapter = nil
         normalizedChapterCache.removeAll()
+        currentLocalDisplayRange = nil
         deactivateAudioSession()
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = nil
@@ -525,9 +533,9 @@ final class TTSManager: NSObject, ObservableObject {
     var calibratorSampleCountForTesting: Int { calibrator.sampleCount }
     /// Test inspection: current calibrated WPM (baseline until first valid sample).
     var calibratorCurrentWPMForTesting: Double { calibrator.currentWPM }
-    /// Test inspection: global queue index across the whole (possibly multi-chapter)
-    /// queue. Production reads `currentLocalIndex`; tests need the global value
-    /// to verify cross-chapter ordering after `queue.appendChapter`.
+    /// Test inspection: global queue index across the whole (possibly multi-
+    /// chapter) queue. Production reads `currentLocalDisplayRange`; tests need
+    /// the global value to verify cross-chapter ordering after `queue.appendChapter`.
     var currentParagraphIndexForTesting: Int { queue.index }
     /// Test inspection: chapter-local progress (0..1) that resets per chapter.
     /// Production reads it indirectly via `currentEstimate` for the lockscreen.
@@ -973,9 +981,9 @@ final class TTSManager: NSObject, ObservableObject {
     func syncReaderToCursor() {
         guard isActive, let paragraph = queue.current else { return }
         refreshNormalizedChapterIfNeeded()
-        currentLocalIndex = queue.localIndexInCurrentChapter
-        provider?.ttsDidActivateParagraph(
-            localIndex: queue.localIndexInCurrentChapter,
+        currentLocalDisplayRange = paragraph.displayRange
+        provider?.ttsDidActivateParagraphs(
+            localDisplayRange: paragraph.displayRange,
             chapterKey: paragraph.chapterKey
         )
         refreshSessionMetadata()
@@ -1009,9 +1017,9 @@ final class TTSManager: NSObject, ObservableObject {
             }
         }
         lastAnnouncedChapterKey = paragraph.chapterKey
-        currentLocalIndex = queue.localIndexInCurrentChapter
-        provider?.ttsDidActivateParagraph(
-            localIndex: queue.localIndexInCurrentChapter,
+        currentLocalDisplayRange = paragraph.displayRange
+        provider?.ttsDidActivateParagraphs(
+            localDisplayRange: paragraph.displayRange,
             chapterKey: paragraph.chapterKey
         )
         isPlaying = true

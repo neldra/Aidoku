@@ -254,11 +254,13 @@ class ReaderTextViewController: BaseViewController {
             guard
                 enabled,
                 TTSManager.shared.isActive,
-                let key = TTSManager.shared.currentChapterKey
+                let key = TTSManager.shared.currentChapterKey,
+                let range = TTSManager.shared.currentLocalDisplayRange
             else { return }
             self.ttsActiveParagraphChanged(Notification(
                 name: .ttsActiveParagraph, object: nil,
-                userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                userInfo: ["lowerBound": range.lowerBound,
+                           "upperBound": range.upperBound,
                            "chapterKey": key]
             ))
         }
@@ -690,11 +692,13 @@ extension ReaderTextViewController {
                 view.layoutIfNeeded()
 
                 if TTSManager.shared.isActive,
-                   let k = TTSManager.shared.currentChapterKey {
+                   let k = TTSManager.shared.currentChapterKey,
+                   let range = TTSManager.shared.currentLocalDisplayRange {
                     DispatchQueue.main.async { [weak self] in
                         self?.ttsActiveParagraphChanged(Notification(
                             name: .ttsActiveParagraph, object: nil,
-                            userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                            userInfo: ["lowerBound": range.lowerBound,
+                                       "upperBound": range.upperBound,
                                        "chapterKey": k]
                         ))
                     }
@@ -711,10 +715,12 @@ extension ReaderTextViewController {
     private func ttsStoreFrames(_ frames: [Int: CGRect], chapterKey: String) {
         ttsParagraphFrames[chapterKey] = frames
         guard TTSManager.shared.isActive,
-              TTSManager.shared.currentChapterKey == chapterKey else { return }
+              TTSManager.shared.currentChapterKey == chapterKey,
+              let range = TTSManager.shared.currentLocalDisplayRange else { return }
         ttsActiveParagraphChanged(Notification(
             name: .ttsActiveParagraph, object: nil,
-            userInfo: ["index": TTSManager.shared.currentLocalIndex,
+            userInfo: ["lowerBound": range.lowerBound,
+                       "upperBound": range.upperBound,
                        "chapterKey": chapterKey]
         ))
     }
@@ -818,11 +824,13 @@ extension ReaderTextViewController {
                 scrollView.contentOffset.y = oldOffset + heightDelta
 
                 if TTSManager.shared.isActive,
-                   let k = TTSManager.shared.currentChapterKey {
+                   let k = TTSManager.shared.currentChapterKey,
+                   let range = TTSManager.shared.currentLocalDisplayRange {
                     DispatchQueue.main.async { [weak self] in
                         self?.ttsActiveParagraphChanged(Notification(
                             name: .ttsActiveParagraph, object: nil,
-                            userInfo: ["index": TTSManager.shared.currentLocalIndex,
+                            userInfo: ["lowerBound": range.lowerBound,
+                                       "upperBound": range.upperBound,
                                        "chapterKey": k]
                         ))
                     }
@@ -1103,27 +1111,37 @@ extension ReaderTextViewController: TTSChapterProvider {
         return (prevCh.key, text)
     }
 
-    func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {
+    func ttsDidActivateParagraphs(localDisplayRange: Range<Int>, chapterKey: String) {
         NotificationCenter.default.post(
             name: .ttsActiveParagraph,
             object: nil,
-            userInfo: ["index": localIndex, "chapterKey": chapterKey]
+            userInfo: [
+                "lowerBound": localDisplayRange.lowerBound,
+                "upperBound": localDisplayRange.upperBound,
+                "chapterKey": chapterKey
+            ]
         )
     }
 
     @objc func ttsActiveParagraphChanged(_ note: Notification) {
         guard
             UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true,
-            let index = note.userInfo?["index"] as? Int,
+            let lower = note.userInfo?["lowerBound"] as? Int,
+            let upper = note.userInfo?["upperBound"] as? Int,
+            lower < upper,
             let chapterKey = note.userInfo?["chapterKey"] as? String
         else { return }
         if !sections.contains(where: { $0.chapter.key == chapterKey }) {
             ensureChapterRendered(key: chapterKey)
             return
         }
+        // Scroll target is the first display paragraph in the active
+        // range — when a merged synthesis paragraph spans several display
+        // blocks, anchoring on the top of the group keeps the whole
+        // highlighted region in view as the rest scrolls past.
         guard
             let sectionIndex = sections.firstIndex(where: { $0.chapter.key == chapterKey }),
-            let frame = ttsParagraphFrames[chapterKey]?[index]
+            let frame = ttsParagraphFrames[chapterKey]?[lower]
         else { return }
         let sectionStartY = sectionContentStartY(at: sectionIndex)
         let target = sectionStartY + frame.minY - scrollView.contentInset.top - ttsUnobstructedHeight / 3

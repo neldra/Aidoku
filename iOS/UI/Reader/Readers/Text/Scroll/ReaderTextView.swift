@@ -54,9 +54,6 @@ struct ReaderTextView: View {
         return TTSText.paragraphs(chapterKey: chapterKey, text: text)
     }
 
-    /// `paragraph.id` is the 0-based chapter-local index (paragraphs are
-    /// built with the default `startIndex: 0`), so it compares directly
-    /// against the manager's chapter-local index.
     /// 16% accent reads cleanly on a near-white background; on a near-black
     /// one it barely lifts. Roughly double the opacity in dark mode so the
     /// active paragraph has comparable contrast against either surface.
@@ -64,10 +61,18 @@ struct ReaderTextView: View {
         Color.accentColor.opacity(colorScheme == .dark ? 0.32 : 0.16)
     }
 
+    /// `paragraph.id` is the 0-based chapter-local display index (built with
+    /// the default `startIndex: 0`). When the engine's active utterance
+    /// merged several display paragraphs together, every index in the
+    /// synthesis paragraph's `currentLocalDisplayRange` lights up so the
+    /// visible row of text matches what's being spoken.
     private func isHighlighted(_ paragraph: TTSParagraph) -> Bool {
-        tts.isActive
-            && tts.currentChapterKey == chapterKey
-            && paragraph.id == tts.currentLocalIndex
+        guard
+            tts.isActive,
+            tts.currentChapterKey == chapterKey,
+            let range = tts.currentLocalDisplayRange
+        else { return false }
+        return range.contains(paragraph.id)
     }
 
     var body: some View {

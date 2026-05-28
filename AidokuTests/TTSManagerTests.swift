@@ -12,6 +12,11 @@ private final class StubProvider: TTSChapterProvider {
     var nextChapterDelay: UInt64 = 0
     var previousChapterDelay: UInt64 = 0
     private(set) var activated: [Int] = []
+    /// Every range the provider has seen, in arrival order. Useful for
+    /// asserting the multi-paragraph highlight fans out across the merged
+    /// span; the bare-lowerBound `activated` array stays for tests that
+    /// only care about the cursor's position.
+    private(set) var activatedRanges: [Range<Int>] = []
 
     func ttsLoadNextChapter() async -> (chapterKey: String, text: String)? {
         if nextChapterDelay > 0 {
@@ -27,8 +32,15 @@ private final class StubProvider: TTSChapterProvider {
         defer { previousChapter = nil }
         return previousChapter
     }
-    func ttsDidActivateParagraph(localIndex: Int, chapterKey: String) {
-        activated.append(localIndex)
+    func ttsDidActivateParagraphs(localDisplayRange: Range<Int>, chapterKey: String) {
+        // `activated` records the range's lower bound so assertions can stay
+        // shaped as `[Int]`. Test fixtures use pre-terminated paragraphs so
+        // each synthesis paragraph maps to a single-index display range; the
+        // lowerBound carries the same value the old localIndex did. Tests
+        // that exercise the merged case (multiple display paragraphs in one
+        // synthesis utterance) read `activatedRanges` instead.
+        activated.append(localDisplayRange.lowerBound)
+        activatedRanges.append(localDisplayRange)
     }
 }
 
@@ -44,7 +56,34 @@ private final class StubProvider: TTSChapterProvider {
         #expect(backend.spoken == ["B."])
         #expect(manager.currentParagraphIndexForTesting == 1)
         #expect(provider.activated == [1])
+        #expect(provider.activatedRanges == [1..<2])
         #expect(manager.isActive && manager.isPlaying)
+    }
+
+    @Test("active display range spans every block a merged paragraph covers")
+    func mergedParagraphHighlightSpansFullRange() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        // Three unterminated display paragraphs merge into one synthesis
+        // paragraph. The fourth display paragraph (terminated) is a second
+        // synthesis paragraph standing on its own.
+        manager.start(
+            provider: provider,
+            chapterKey: "c1",
+            text: "Sunny glanced\n\nat the\n\nwarrior\n\nand smiled.\n\nNext sentence.",
+            startIndex: 0
+        )
+        // First utterance covers display paragraphs 0..3 (the merge); the
+        // reader can light all four rows up from a single range.
+        #expect(provider.activatedRanges == [0..<4])
+        #expect(manager.currentLocalDisplayRange == 0..<4)
+        // Advancing moves to the standalone synthesis paragraph at display
+        // index 4 — the single-block range looks identical to the
+        // unmerged case.
+        manager.handleUtteranceFinishedForTesting()
+        #expect(provider.activatedRanges == [0..<4, 4..<5])
+        #expect(manager.currentLocalDisplayRange == 4..<5)
     }
 
     @Test("start with no narratable paragraphs stays inactive")
@@ -125,7 +164,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentChapterKey == "c5")
         #expect(manager.currentParagraphIndexForTesting == 0)
-        #expect(manager.currentLocalIndex == 0)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 0)
         #expect(backend.spoken == ["A", "M."])
         #expect(provider.activated == [0, 0])
     }
@@ -176,14 +215,14 @@ private final class StubProvider: TTSChapterProvider {
 
         manager.skipForward()
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(manager.currentLocalIndex == 1)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 1)
         #expect(manager.isPlaying == false)
         #expect(backend.spoken == ["A."])
         #expect(provider.activated == [0, 1])
 
         manager.skipBackward()
         #expect(manager.currentParagraphIndexForTesting == 0)
-        #expect(manager.currentLocalIndex == 0)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 0)
         #expect(manager.isPlaying == false)
         #expect(backend.spoken == ["A."])
         #expect(provider.activated == [0, 1, 0])
@@ -201,7 +240,7 @@ private final class StubProvider: TTSChapterProvider {
         manager.play()
 
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(manager.currentLocalIndex == 1)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 1)
         #expect(backend.spoken == ["A.", "B."])
         #expect(manager.isPlaying)
     }
@@ -217,7 +256,7 @@ private final class StubProvider: TTSChapterProvider {
         manager.rate = manager.rate == 1.5 ? 1.0 : 1.5
 
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(manager.currentLocalIndex == 1)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 1)
         #expect(backend.spoken == ["B.", "B."])
         #expect(provider.activated == [1, 1])
         #expect(manager.isPlaying)
@@ -238,7 +277,7 @@ private final class StubProvider: TTSChapterProvider {
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(manager.currentLocalIndex == 1)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 1)
         #expect(backend.spoken == ["B.", "B."])
         #expect(provider.activated == [1, 1])
 
@@ -246,7 +285,7 @@ private final class StubProvider: TTSChapterProvider {
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(manager.currentParagraphIndexForTesting == 2)
-        #expect(manager.currentLocalIndex == 2)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 2)
         #expect(backend.spoken == ["B.", "B.", "C."])
         #expect(provider.activated == [1, 1, 2])
     }
@@ -263,7 +302,7 @@ private final class StubProvider: TTSChapterProvider {
         manager.rate = manager.rate == 1.5 ? 1.0 : 1.5
 
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(manager.currentLocalIndex == 1)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 1)
         #expect(backend.spoken == ["B."])
         #expect(provider.activated == [1])
         #expect(manager.isPlaying == false)
@@ -337,7 +376,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentChapterKey == "c5")
         #expect(manager.currentParagraphIndexForTesting == 0)
-        #expect(manager.currentLocalIndex == 0)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 0)
         #expect(backend.spoken == ["C."])
         #expect(provider.activated == [2, 0])
         #expect(manager.isPlaying == false)
@@ -379,7 +418,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentChapterKey == "c2")
         #expect(manager.currentParagraphIndexForTesting == 1)
-        #expect(manager.currentLocalIndex == 0)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 0)
         #expect(backend.spoken == ["A"])
         #expect(provider.activated == [0, 0])
         #expect(manager.isPlaying == false)
@@ -400,7 +439,7 @@ private final class StubProvider: TTSChapterProvider {
 
         #expect(manager.currentChapterKey == "c0")
         #expect(manager.currentParagraphIndexForTesting == 0)
-        #expect(manager.currentLocalIndex == 0)
+        #expect(manager.currentLocalDisplayRange?.lowerBound == 0)
         #expect(backend.spoken == ["A."])
         #expect(provider.activated == [0, 0])
         #expect(manager.isPlaying == false)
