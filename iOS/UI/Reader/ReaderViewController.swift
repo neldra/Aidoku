@@ -6,9 +6,11 @@
 //
 
 import UIKit
+import Combine
 import SafariServices
 import SwiftUI
 import AidokuRunner
+import Nuke
 
 class ReaderViewController: BaseObservingViewController {
     enum Reader {
@@ -51,6 +53,10 @@ class ReaderViewController: BaseObservingViewController {
     private lazy var activityIndicator = UIActivityIndicatorView(style: .medium)
     private lazy var toolbarView = ReaderToolbarView()
     private var toolbarViewWidthConstraint: NSLayoutConstraint?
+
+    private var ttsBarButton: UIBarButtonItem?
+    private var ttsButton: UIButton?
+    private var ttsStateCancellable: AnyCancellable?
 
     private var squeezeTimer: Timer?
     private var longSqueezeTimer: Timer?
@@ -149,6 +155,17 @@ class ReaderViewController: BaseObservingViewController {
             action: #selector(openWebView)
         )
         moreButton.isEnabled = chapter.url != nil
+        let ttsButton = UIButton(type: .system)
+        ttsButton.setImage(UIImage(systemName: "headphones"), for: .normal)
+        ttsButton.addTarget(self, action: #selector(toggleTTS), for: .touchUpInside)
+        let ttsLongPress = UILongPressGestureRecognizer(
+            target: self,
+            action: #selector(handleTTSLongPress(_:))
+        )
+        ttsButton.addGestureRecognizer(ttsLongPress)
+        ttsButton.isEnabled = false
+        self.ttsButton = ttsButton
+        ttsBarButton = UIBarButtonItem(customView: ttsButton)
         navigationItem.rightBarButtonItems = [
             moreButton,
             UIBarButtonItem(
@@ -156,8 +173,16 @@ class ReaderViewController: BaseObservingViewController {
                 style: .plain,
                 target: self,
                 action: #selector(openReaderSettings)
-            )
+            ),
+            ttsBarButton!
         ]
+
+        ttsStateCancellable = TTSManager.shared.$isActive
+            .combineLatest(TTSManager.shared.$isPlaying)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active, playing in
+                self?.updateTTSButtonIcon(active: active, playing: playing)
+            }
 
         // fix navbar being clear
         let navigationBarAppearance = UINavigationBarAppearance()
@@ -345,6 +370,16 @@ class ReaderViewController: BaseObservingViewController {
         }
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+
+        if isBeingDismissed
+            || isMovingFromParent
+            || (navigationController?.isBeingDismissed ?? false) {
+            TTSManager.shared.stop()
+        }
+    }
+
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
 
@@ -512,7 +547,11 @@ class ReaderViewController: BaseObservingViewController {
                 currentReader = .paged
         }
         let vc = UIHostingController(
-            rootView: ReaderSettingsView(mangaId: manga.identifier, reader: currentReader)
+            rootView: ReaderSettingsView(
+                mangaId: manga.identifier,
+                reader: currentReader,
+                chapterLanguage: chapter.language?.isEmpty == false ? chapter.language : nil
+            )
         )
         present(vc, animated: true)
     }
@@ -539,6 +578,7 @@ class ReaderViewController: BaseObservingViewController {
     }
 
     @objc func close() {
+        TTSManager.shared.stop()
         dismiss(animated: true)
     }
 
@@ -652,6 +692,7 @@ extension ReaderViewController {
         }
         reader?.readingMode = readingMode
         disableSwipeGestures()
+        ttsButton?.isEnabled = reader is ReaderTextViewController
     }
 }
 
@@ -1215,6 +1256,67 @@ extension ReaderViewController {
         if let previousChaoter = getPreviousChapter() {
             reader?.setChapter(previousChaoter, startPage: 1)
             setChapter(previousChaoter)
+        }
+    }
+}
+
+// MARK: - TTS
+
+extension ReaderViewController {
+    @objc func toggleTTS() {
+        guard let textReader = reader as? ReaderTextViewController else { return }
+        if TTSManager.shared.isActive {
+            TTSManager.shared.reattach(provider: textReader)
+            TTSManager.shared.togglePlayPause()
+            return
+        }
+        guard let (key, text) = textReader.currentChapterText else { return }
+        TTSManager.shared.start(
+            provider: textReader,
+            chapterKey: key,
+            text: text,
+            startIndex: textReader.nearestParagraphIndex
+        )
+        loadTTSArtwork()
+    }
+
+    /// Long-press on the toolbar headphone button stops the engine entirely,
+    /// tearing down the audio session and clearing Now Playing.
+    @objc func handleTTSLongPress(_ gr: UILongPressGestureRecognizer) {
+        guard gr.state == .began, TTSManager.shared.isActive else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        TTSManager.shared.stop()
+    }
+
+    private func updateTTSButtonIcon(active: Bool, playing: Bool) {
+        let symbolName: String
+        let label: String
+        if !active {
+            symbolName = "headphones"
+            label = NSLocalizedString("TTS_START", comment: "")
+        } else if playing {
+            symbolName = "pause.circle.fill"
+            label = NSLocalizedString("TTS_PAUSE", comment: "")
+        } else {
+            symbolName = "play.circle.fill"
+            label = NSLocalizedString("TTS_RESUME", comment: "")
+        }
+        ttsButton?.setImage(UIImage(systemName: symbolName), for: .normal)
+        ttsButton?.accessibilityLabel = label
+    }
+
+    /// Load the series cover and hand it to the engine for the lock-screen
+    /// Now Playing entry.
+    private func loadTTSArtwork() {
+        guard TTSManager.shared.artwork == nil,
+              let coverString = manga.cover,
+              let url = URL(string: coverString)
+        else { return }
+        Task {
+            let resolved = url.toAidokuFileUrl() ?? url
+            if let image = try? await ImagePipeline.shared.image(for: resolved) {
+                await MainActor.run { TTSManager.shared.artwork = image }
+            }
         }
     }
 }

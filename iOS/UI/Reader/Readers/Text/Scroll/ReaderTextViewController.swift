@@ -39,6 +39,7 @@ class ReaderTextViewController: BaseViewController {
 
     private var isLoadingChapter = false
     private var loadingNext = false
+    private var ttsLoadingNext = false
     private var loadingPrevious = false
     private var hasReachedEnd = false
 
@@ -46,6 +47,7 @@ class ReaderTextViewController: BaseViewController {
     private var estimatedPageCount = 1
     private var pendingScrollRestore = false
     private var isReportingProgress = false
+    private var isTTSAutoScrolling = false
     private var lastReportedPage = 0
     private var needsPageCountUpdate = false
 
@@ -55,6 +57,10 @@ class ReaderTextViewController: BaseViewController {
     /// When true, suppresses hosting controller size invalidation to prevent
     /// layout passes from undoing offset compensation during bar transitions.
     private var isSafeAreaTransitioning = false
+    /// Latest per-paragraph frames (chapter-local index → rect in the
+    /// "ttsReaderContent" space), keyed by chapter key, fed by ReaderTextView.
+    private var ttsParagraphFrames: [String: [Int: CGRect]] = [:]
+    private var ttsLastHighlightEnabled = UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true
 
     // MARK: - Scroll Position Persistence
 
@@ -114,7 +120,10 @@ class ReaderTextViewController: BaseViewController {
             rootView: ReaderTextView(
                 source: viewModel.source, page: page,
                 fontFamily: currentFontFamily, fontSize: currentFontSize,
-                lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding
+                lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding,
+                onParagraphFrames: { [weak self] frames in
+                    self?.ttsStoreFrames(frames, chapterKey: page?.chapterId ?? "")
+                }
             )
         )
         if #available(iOS 16.0, *) {
@@ -147,6 +156,25 @@ class ReaderTextViewController: BaseViewController {
         super.init()
     }
 
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        if TTSManager.shared.isActive {
+            TTSManager.shared.reattach(provider: self)
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+
+        if isBeingDismissed
+            || isMovingFromParent
+            || (navigationController?.isBeingDismissed ?? false) {
+            TTSManager.shared.detach(provider: self)
+        }
+    }
+
     // MARK: - Helpers
 
     private var sourceId: String {
@@ -155,6 +183,20 @@ class ReaderTextViewController: BaseViewController {
 
     private var mangaId: String {
         viewModel.manga.key
+    }
+
+    private func retargetTTSIfNeeded(
+        to chapter: AidokuRunner.Chapter,
+        pages: [Page],
+        force: Bool = false
+    ) {
+        guard TTSManager.shared.isActive else { return }
+        guard force || TTSManager.shared.currentChapterKey != chapter.key else { return }
+        if pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.resolvedText() {
+            TTSManager.shared.userDidNavigate(toChapterKey: chapter.key, text: text)
+        } else {
+            TTSManager.shared.stop()
+        }
     }
 
     /// Create a full-screen-height transition view to be placed between sections.
@@ -177,7 +219,10 @@ class ReaderTextViewController: BaseViewController {
                 hc.rootView = ReaderTextView(
                     source: viewModel.source, page: page,
                     fontFamily: currentFontFamily, fontSize: currentFontSize,
-                    lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding
+                    lineSpacing: currentLineSpacing, horizontalPadding: currentHorizontalPadding,
+                    onParagraphFrames: { [weak self] frames in
+                        self?.ttsStoreFrames(frames, chapterKey: page?.chapterId ?? "")
+                    }
                 )
                 hc.view.invalidateIntrinsicContentSize()
             }
@@ -187,6 +232,20 @@ class ReaderTextViewController: BaseViewController {
     // MARK: - Configure
 
     override func configure() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(ttsActiveParagraphChanged(_:)),
+            name: .ttsActiveParagraph,
+            object: nil
+        )
+        // Selector-based (not a block observer) so the handler stays on the
+        // main-actor-isolated view controller — a `@Sendable` block observer
+        // touching `TTSManager.shared` would trip Swift 6 concurrency checks.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(highlightSettingChanged),
+            name: UserDefaults.didChangeNotification, object: nil
+        )
+
         let styleKeys = [
             "Reader.textFontFamily",
             "Reader.textFontSize",
@@ -530,6 +589,8 @@ extension ReaderTextViewController {
                 scrollView.setContentOffset(.init(x: 0, y: prevHeight - safeTop), animated: false)
             }
 
+            retargetTTSIfNeeded(to: chapter, pages: viewModel.pages, force: true)
+
             isLoadingChapter = false
         }
     }
@@ -611,9 +672,62 @@ extension ReaderTextViewController {
                 updateBoundaryTransitionViews()
                 view.layoutIfNeeded()
 
+                if TTSManager.shared.isActive,
+                   let k = TTSManager.shared.currentChapterKey,
+                   let range = TTSManager.shared.currentLocalDisplayRange {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.ttsActiveParagraphChanged(Notification(
+                            name: .ttsActiveParagraph, object: nil,
+                            userInfo: ["lowerBound": range.lowerBound,
+                                       "upperBound": range.upperBound,
+                                       "chapterKey": k]
+                        ))
+                    }
+                }
+
                 loadingNext = false
             }
         }
+    }
+
+    /// Store a chapter's paragraph frames; if that chapter is the one TTS
+    /// is currently speaking, re-drive the active-paragraph scroll now that
+    /// its geometry exists.
+    private func ttsStoreFrames(_ frames: [Int: CGRect], chapterKey: String) {
+        ttsParagraphFrames[chapterKey] = frames
+        guard TTSManager.shared.isActive,
+              TTSManager.shared.currentChapterKey == chapterKey,
+              let range = TTSManager.shared.currentLocalDisplayRange else { return }
+        ttsActiveParagraphChanged(Notification(
+            name: .ttsActiveParagraph, object: nil,
+            userInfo: ["lowerBound": range.lowerBound,
+                       "upperBound": range.upperBound,
+                       "chapterKey": chapterKey]
+        ))
+    }
+
+    /// Make sure `key`'s chapter is appended so TTS highlight/scroll can
+    /// target it. Reuses the infinite-scroll append path.
+    private func ensureChapterRendered(key: String) {
+        guard !sections.contains(where: { $0.chapter.key == key }) else { return }
+        if nextChapter?.key == key {
+            appendNextChapter()
+        } else if previousChapter?.key == key {
+            prependPreviousChapter()
+        }
+    }
+
+    private var ttsVisibleContentTop: CGFloat {
+        scrollView.contentOffset.y + scrollView.contentInset.top
+    }
+
+    private var ttsUnobstructedHeight: CGFloat {
+        max(1, scrollView.frame.height - scrollView.contentInset.top - scrollView.contentInset.bottom)
+    }
+
+    private var ttsMaximumContentOffsetY: CGFloat {
+        max(-scrollView.contentInset.top,
+            scrollView.contentSize.height - scrollView.frame.height + scrollView.contentInset.bottom)
     }
 
     // MARK: - Infinite Scroll: Prepend Previous Chapter
@@ -690,6 +804,19 @@ extension ReaderTextViewController {
                 let heightDelta = newContentHeight - oldContentHeight
                 scrollView.contentOffset.y = oldOffset + heightDelta
 
+                if TTSManager.shared.isActive,
+                   let k = TTSManager.shared.currentChapterKey,
+                   let range = TTSManager.shared.currentLocalDisplayRange {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.ttsActiveParagraphChanged(Notification(
+                            name: .ttsActiveParagraph, object: nil,
+                            userInfo: ["lowerBound": range.lowerBound,
+                                       "upperBound": range.upperBound,
+                                       "chapterKey": k]
+                        ))
+                    }
+                }
+
                 loadingPrevious = false
             }
         }
@@ -698,13 +825,16 @@ extension ReaderTextViewController {
     // MARK: - Chapter Switch Detection
 
     /// Update the "current chapter" when the user scrolls into a different section.
-    private func updateCurrentChapterFromScroll() {
+    private func updateCurrentChapterFromScroll(retargetTTS: Bool = true) {
         guard let index = currentSectionIndex else { return }
         let sectionChapter = sections[index].chapter
         guard sectionChapter != chapter else { return }
 
         chapter = sectionChapter
         delegate?.setChapter(sectionChapter)
+        if retargetTTS {
+            retargetTTSIfNeeded(to: sectionChapter, pages: sections[index].pages)
+        }
 
         // Refresh navigation pointers
         previousChapter = delegate?.getPreviousChapter()
@@ -810,11 +940,15 @@ extension ReaderTextViewController: ReaderReaderDelegate {
 
 // MARK: - Scroll View Delegate
 extension ReaderTextViewController: UIScrollViewDelegate {
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        isTTSAutoScrolling = false
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard !isSliding, !pendingScrollRestore, !isReportingProgress else { return }
 
         // Detect if current chapter changed due to scrolling
-        updateCurrentChapterFromScroll()
+        updateCurrentChapterFromScroll(retargetTTS: !isTTSAutoScrolling)
 
         guard let index = currentSectionIndex else { return }
         let startY = sectionContentStartY(at: index)
@@ -854,6 +988,11 @@ extension ReaderTextViewController: UIScrollViewDelegate {
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        if isTTSAutoScrolling {
+            isTTSAutoScrolling = false
+            updateCurrentChapterFromScroll(retargetTTS: false)
+            return
+        }
         checkInfiniteLoad()
     }
 
@@ -876,5 +1015,144 @@ extension ReaderTextViewController: UIScrollViewDelegate {
                 appendNextChapter()
             }
         }
+    }
+}
+
+// MARK: - TTS Integration
+
+extension Notification.Name {
+    static let ttsActiveParagraph = Notification.Name("Reader.ttsActiveParagraph")
+}
+
+extension ReaderTextViewController: TTSChapterProvider {
+    /// Paragraph index nearest the top of the visible viewport, within the
+    /// current chapter's section.
+    var nearestParagraphIndex: Int {
+        guard let sectionIndex = currentSectionIndex else { return 0 }
+        let key = sections[sectionIndex].chapter.key
+        guard let frames = ttsParagraphFrames[key], !frames.isEmpty else { return 0 }
+        let localTop = ttsVisibleContentTop - sectionContentStartY(at: sectionIndex)
+        let ordered = frames.sorted { $0.key < $1.key }
+        let firstVisible = ordered.first(where: { $0.value.maxY > localTop })?.key
+        return firstVisible ?? ordered.last?.key ?? 0
+    }
+
+    var currentChapterText: (key: String, text: String)? {
+        guard let sectionIndex = currentSectionIndex else { return nil }
+        let section = sections[sectionIndex]
+        guard let text = section.pages.first?.resolvedText() else { return nil }
+        return (section.chapter.key, text)
+    }
+
+    var ttsNovelTitle: String { viewModel.manga.title }
+
+    func ttsChapterTitle(forKey key: String) -> String {
+        // Resolve from the full known chapter list, not just rendered
+        // sections: on a cross-chapter TTS rollover the queue enters the new
+        // chapter before its section has finished rendering, so a
+        // sections-only lookup would return "" until the next paragraph.
+        let resolved = sections.first(where: { $0.chapter.key == key })?.chapter
+            ?? viewModel.manga.chapters?.first(where: { $0.key == key })
+            ?? [chapter, nextChapter, previousChapter]
+                .compactMap { $0 }
+                .first(where: { $0.key == key })
+        guard let resolved else { return "" }
+        return resolved.title
+            ?? (resolved.chapterNumber.map { "Chapter \(String(format: "%g", Double($0)))" } ?? "")
+    }
+
+    var ttsArtwork: UIImage? { nil } // supplied by ReaderViewController instead
+
+    func ttsLoadNextChapter() async -> (chapterKey: String, text: String)? {
+        guard let nextCh = delegate?.getNextChapter(), !ttsLoadingNext else { return nil }
+        ttsLoadingNext = true
+        defer { ttsLoadingNext = false }
+        await viewModel.preload(chapter: nextCh)
+        // The preload slot is shared with the infinite-scroll loader. Only
+        // consume it if it still holds the chapter we requested; a concurrent
+        // appendNextChapter could otherwise feed the wrong chapter's text.
+        guard viewModel.preloadedChapter == nextCh else { return nil }
+        let pages = viewModel.preloadedPages
+        guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.resolvedText() else {
+            return nil
+        }
+        return (nextCh.key, text)
+    }
+
+    func ttsLoadPreviousChapter() async -> (chapterKey: String, text: String)? {
+        guard let prevCh = delegate?.getPreviousChapter(), !ttsLoadingNext else { return nil }
+        ttsLoadingNext = true
+        defer { ttsLoadingNext = false }
+        await viewModel.preload(chapter: prevCh)
+        guard viewModel.preloadedChapter == prevCh else { return nil }
+        let pages = viewModel.preloadedPages
+        guard pages.allSatisfy({ $0.isTextPage }), let text = pages.first?.resolvedText() else {
+            return nil
+        }
+        return (prevCh.key, text)
+    }
+
+    func ttsDidActivateParagraphs(localDisplayRange: Range<Int>, chapterKey: String) {
+        NotificationCenter.default.post(
+            name: .ttsActiveParagraph,
+            object: nil,
+            userInfo: [
+                "lowerBound": localDisplayRange.lowerBound,
+                "upperBound": localDisplayRange.upperBound,
+                "chapterKey": chapterKey
+            ]
+        )
+    }
+
+    /// Re-emit the active-paragraph highlight when the highlight setting is
+    /// toggled on mid-session, so the current paragraph lights up immediately
+    /// instead of waiting for the next utterance boundary.
+    @objc private func highlightSettingChanged() {
+        let enabled = UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true
+        guard enabled != ttsLastHighlightEnabled else { return }
+        ttsLastHighlightEnabled = enabled
+        guard
+            enabled,
+            TTSManager.shared.isActive,
+            let key = TTSManager.shared.currentChapterKey,
+            let range = TTSManager.shared.currentLocalDisplayRange
+        else { return }
+        ttsActiveParagraphChanged(Notification(
+            name: .ttsActiveParagraph, object: nil,
+            userInfo: ["lowerBound": range.lowerBound,
+                       "upperBound": range.upperBound,
+                       "chapterKey": key]
+        ))
+    }
+
+    @objc func ttsActiveParagraphChanged(_ note: Notification) {
+        guard
+            UserDefaults.standard.object(forKey: TTSManager.highlightKey) as? Bool ?? true,
+            let lower = note.userInfo?["lowerBound"] as? Int,
+            let upper = note.userInfo?["upperBound"] as? Int,
+            lower < upper,
+            let chapterKey = note.userInfo?["chapterKey"] as? String
+        else { return }
+        if !sections.contains(where: { $0.chapter.key == chapterKey }) {
+            ensureChapterRendered(key: chapterKey)
+            return
+        }
+        // Scroll target is the first display paragraph in the active
+        // range — when a merged synthesis paragraph spans several display
+        // blocks, anchoring on the top of the group keeps the whole
+        // highlighted region in view as the rest scrolls past.
+        guard
+            let sectionIndex = sections.firstIndex(where: { $0.chapter.key == chapterKey }),
+            let frame = ttsParagraphFrames[chapterKey]?[lower]
+        else { return }
+        let sectionStartY = sectionContentStartY(at: sectionIndex)
+        let target = sectionStartY + frame.minY - scrollView.contentInset.top - ttsUnobstructedHeight / 3
+        let targetY = min(max(-scrollView.contentInset.top, target), ttsMaximumContentOffsetY)
+        guard abs(scrollView.contentOffset.y - targetY) > 0.5 else { return }
+        isTTSAutoScrolling = true
+        scrollView.setContentOffset(
+            CGPoint(x: 0, y: targetY),
+            animated: true
+        )
     }
 }

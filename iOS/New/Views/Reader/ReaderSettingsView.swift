@@ -5,11 +5,16 @@
 //  Created by Skitty on 6/30/25.
 //
 
+import AVFoundation
 import SwiftUI
 
 struct ReaderSettingsView: View {
     let mangaId: MangaIdentifier
     let reader: ReaderViewController.Reader
+    /// ISO 639-1 language code of the chapter currently in the reader, or nil
+    /// when the source doesn't tag chapters with a language. Used to default
+    /// the TTS voice picker to relevant voices.
+    let chapterLanguage: String?
 
     @State private var readingMode: ReadingMode?
     @State private var tapZones: DefaultTapZones
@@ -27,9 +32,14 @@ struct ReaderSettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    init(mangaId: MangaIdentifier, reader: ReaderViewController.Reader) {
+    init(
+        mangaId: MangaIdentifier,
+        reader: ReaderViewController.Reader,
+        chapterLanguage: String? = nil
+    ) {
         self.mangaId = mangaId
         self.reader = reader
+        self.chapterLanguage = chapterLanguage
         self._readingMode = State(
             initialValue: UserDefaults.standard.string(forKey: "Reader.readingMode.\(mangaId)")
                 .flatMap(ReadingMode.init)
@@ -245,6 +255,8 @@ struct ReaderSettingsView: View {
                             )
                         )
                     }
+
+                    TTSReaderSettingsSection(chapterLanguage: chapterLanguage)
                 } else {
                     if !downsampleImages.value {
                         Section {
@@ -398,6 +410,123 @@ struct ReaderSettingsView: View {
             .onReceive(NotificationCenter.default.publisher(for: .readerTapZones)) { _ in
                 tapZones = UserDefaults.standard.string(forKey: "Reader.tapZones").flatMap(DefaultTapZones.init) ?? .disabled
             }
+        }
+    }
+}
+
+private struct TTSReaderSettingsSection: View {
+    let chapterLanguage: String?
+
+    @ObservedObject private var tts = TTSManager.shared
+
+    /// Local draft while the user drags the slider. Rate changes restart the
+    /// current utterance, so we only commit on slider release.
+    @State private var draftRate: Float?
+    @State private var showAllLanguages: Bool = false
+
+    /// `tts.rate` is a normalized multiplier (1.0 = normal speed).
+    private var currentRate: Float { draftRate ?? tts.rate }
+
+    /// Falls back to the device language when the source doesn't tag the
+    /// chapter. Picker filtering hinges on this.
+    private var filterLanguageCode: String {
+        chapterLanguage ?? Locale.current.languageCode ?? "en"
+    }
+
+    /// Voices offered by the *selected* (preferred) backend — follows the
+    /// engine picker rather than the resolved fallback, so picking "Neural
+    /// (Kokoro)" while it's mid-download shows Kokoro's voice catalog (with
+    /// the picker `.disabled` until Kokoro becomes ready). Language-filtered
+    /// and quality-sorted for display.
+    private var displayedVoices: [SpeechVoice] {
+        let all = tts.selectedBackendVoices()
+        let voices: [SpeechVoice]
+        if showAllLanguages {
+            voices = all
+        } else {
+            let code = filterLanguageCode
+            let filtered = all.filter { voice in
+                voice.language == code || voice.language.hasPrefix("\(code)-")
+            }
+            if filtered.isEmpty {
+                voices = all
+            } else {
+                // Keep the current selection visible even outside the filter.
+                let currentId = tts.selectedBackendVoiceID
+                if !currentId.isEmpty,
+                   !filtered.contains(where: { $0.id == currentId }),
+                   let current = all.first(where: { $0.id == currentId }) {
+                    voices = filtered + [current]
+                } else {
+                    voices = filtered
+                }
+            }
+        }
+        return voices.sorted { lhs, rhs in
+            if lhs.quality != rhs.quality { return lhs.quality > rhs.quality }
+            if lhs.language != rhs.language { return lhs.language < rhs.language }
+            return lhs.displayName < rhs.displayName
+        }
+    }
+
+    /// Apple bakes the quality marker into voice names ("Ava (Premium)"); our
+    /// own quality suffix replaces it.
+    private func cleanName(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: " (Premium)", with: "")
+            .replacingOccurrences(of: " (Enhanced)", with: "")
+    }
+
+    private func displayName(for voice: SpeechVoice) -> String {
+        let base = "\(cleanName(voice.displayName)) (\(voice.language))"
+        switch voice.quality {
+        case .premium: return "\(base) — \(NSLocalizedString("TTS_QUALITY_PREMIUM"))"
+        case .enhanced: return "\(base) — \(NSLocalizedString("TTS_QUALITY_ENHANCED"))"
+        case .standard: return base
+        }
+    }
+
+    var body: some View {
+        Section(String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("TEXT_TO_SPEECH"))) {
+            Picker(
+                NSLocalizedString("TTS_VOICE"),
+                selection: Binding(
+                    get: { tts.selectedBackendVoiceID },
+                    set: { tts.selectedBackendVoiceID = $0 }
+                )
+            ) {
+                ForEach(displayedVoices, id: \.id) { voice in
+                    Text(displayName(for: voice)).tag(voice.id)
+                }
+            }
+            .disabled(!tts.selectedBackendIsReady)
+
+            Toggle(NSLocalizedString("TTS_SHOW_ALL_LANGUAGES"), isOn: $showAllLanguages)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(NSLocalizedString("TTS_SPEECH_RATE"))
+                    Spacer()
+                    Text(String(format: "%.1fx", currentRate))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(
+                    value: Binding(
+                        get: { currentRate },
+                        set: { draftRate = $0 }
+                    ),
+                    in: 0.5...2.0,
+                    onEditingChanged: { editing in
+                        if !editing, let rate = draftRate {
+                            tts.rate = rate
+                            draftRate = nil
+                        }
+                    }
+                )
+            }
+
+            Toggle(NSLocalizedString("TTS_ANNOUNCE_CHAPTER_TITLES"), isOn: $tts.announceChapterTitles)
         }
     }
 }
