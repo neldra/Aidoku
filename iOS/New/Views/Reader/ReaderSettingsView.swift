@@ -488,6 +488,21 @@ private struct TTSReaderSettingsSection: View {
 
     var body: some View {
         Section(String(format: NSLocalizedString("%@_EXPERIMENTAL"), NSLocalizedString("TEXT_TO_SPEECH"))) {
+            // Engine picker — hidden when only one backend exists (iOS 15).
+            if tts.selectableBackends().count > 1 {
+                Picker(NSLocalizedString("TTS_VOICE_ENGINE"), selection: $tts.currentBackendID) {
+                    ForEach(tts.selectableBackends(), id: \.id) { backend in
+                        Text(backend.displayName).tag(backend.id)
+                    }
+                }
+            }
+
+            if #available(iOS 16, *) {
+                if tts.currentBackendID == "kokoro" {
+                    KokoroDownloadRow()
+                }
+            }
+
             Picker(
                 NSLocalizedString("TTS_VOICE"),
                 selection: Binding(
@@ -527,6 +542,63 @@ private struct TTSReaderSettingsSection: View {
             }
 
             Toggle(NSLocalizedString("TTS_ANNOUNCE_CHAPTER_TITLES"), isOn: $tts.announceChapterTitles)
+        }
+    }
+}
+
+/// The Kokoro model download row — reflects `KokoroModelManager` state.
+@available(iOS 16, *)
+private struct KokoroDownloadRow: View {
+    @ObservedObject private var tts = TTSManager.shared
+
+    var body: some View {
+        if let model = tts.kokoroModelManager {
+            KokoroDownloadRowBody(model: model)
+                .onAppear { model.refreshInstalledState() }
+        }
+    }
+}
+
+@available(iOS 16, *)
+private struct KokoroDownloadRowBody: View {
+    @ObservedObject var model: KokoroModelManager
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .notInstalled:
+                Toggle(NSLocalizedString("TTS_KOKORO_WIFI_ONLY"), isOn: Binding(
+                    get: { model.wifiOnly },
+                    set: { model.wifiOnly = $0 }
+                ))
+                Button(NSLocalizedString("TTS_KOKORO_DOWNLOAD")) {
+                    model.startDownload()
+                }
+            case .downloading(let progress):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(NSLocalizedString("TTS_KOKORO_DOWNLOADING"))
+                    ProgressView(value: progress)
+                }
+                Button(NSLocalizedString("TTS_KOKORO_CANCEL"), role: .cancel) {
+                    model.cancelDownload()
+                }
+            case .ready:
+                EmptyView()
+            case .failed(let reason):
+                Text("\(NSLocalizedString("TTS_KOKORO_FAILED")): \(reason)")
+                    .foregroundStyle(.red)
+                Button(NSLocalizedString("TTS_KOKORO_RETRY")) {
+                    model.retry()
+                }
+            }
+        }
+        .onChange(of: model.state) { newState in
+            // A Kokoro selection made before the models were downloaded only
+            // resolves to a fallback; once the download completes, re-apply the
+            // preference so the engine activates without an app restart.
+            if newState == .ready {
+                TTSManager.shared.reapplyBackendPreference()
+            }
         }
     }
 }

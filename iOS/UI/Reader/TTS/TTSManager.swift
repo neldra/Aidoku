@@ -255,6 +255,15 @@ final class TTSManager: NSObject, ObservableObject {
         now: @escaping () -> Date = Date.init
     ) {
         let preferred = UserDefaults.standard.string(forKey: Self.backendKey)
+        // Refresh Kokoro's installed state synchronously before resolving —
+        // otherwise on every relaunch the models on disk are not yet detected
+        // (`refreshInstalledState()` only runs from the settings download row's
+        // `.onAppear`), the registry falls back to the system backend, and the
+        // user's saved Kokoro preference is silently lost until they open
+        // Reader Settings.
+        if #available(iOS 16, *) {
+            registry.kokoroModelManager?.refreshInstalledStateSync()
+        }
         let active = registry.currentBackend(preferredID: preferred)
         self.init(backend: active, registry: registry, now: now)
     }
@@ -324,6 +333,12 @@ final class TTSManager: NSObject, ObservableObject {
                 )
             }
         }
+    }
+
+    /// The Kokoro model manager (iOS 16+), for the settings download row.
+    @available(iOS 16, *)
+    var kokoroModelManager: KokoroModelManager? {
+        registry?.kokoroModelManager
     }
 
     /// Re-resolve the active backend against the current `currentBackendID`

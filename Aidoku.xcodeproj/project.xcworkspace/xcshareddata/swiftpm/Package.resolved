@@ -1,5 +1,5 @@
 {
-  "originHash" : "fbee1fcd32ad03a92ffe9109e2bd94b400fad95c547fb7d3b5ec7a14031d23a7",
+  "originHash" : "d78ee29e5df6b1a15c819864e73a761563b77fd1a20306aa4530b74cf5abd73b",
   "pins" : [
     {
       "identity" : "aidokurunner",
@@ -8,6 +8,14 @@
       "state" : {
         "branch" : "main",
         "revision" : "3dcb4ea9afd8f6ad35b4f7fe47166f596ae4a0a9"
+      }
+    },
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/neldra/FluidAudio.git",
+      "state" : {
+        "revision" : "8babb3055ab60a005941be352e7120b0bc04af08"
       }
     },
     {
@@ -26,6 +34,14 @@
       "state" : {
         "revision" : "0d91406ecd4d6c1c56275866f00508d9aeacc92a",
         "version" : "1.2.0"
+      }
+    },
+    {
+      "identity" : "misakiswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/neldra/misakiswift.git",
+      "state" : {
+        "revision" : "3db3fc9a2d4a572ef4e38139ab599bade1677036"
       }
     },
     {
