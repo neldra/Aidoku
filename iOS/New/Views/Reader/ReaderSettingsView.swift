@@ -498,7 +498,12 @@ private struct TTSReaderSettingsSection: View {
             }
 
             if #available(iOS 16, *) {
-                if tts.currentBackendID == "kokoro" {
+                // Only show the download row for the neural backend the user has
+                // selected — saves screen space and avoids implying that *both*
+                // models need to be downloaded.
+                if tts.currentBackendID == "supertonic3" {
+                    Supertonic3DownloadRow()
+                } else if tts.currentBackendID == "kokoro" {
                     KokoroDownloadRow()
                 }
             }
@@ -596,6 +601,60 @@ private struct KokoroDownloadRowBody: View {
             // A Kokoro selection made before the models were downloaded only
             // resolves to a fallback; once the download completes, re-apply the
             // preference so the engine activates without an app restart.
+            if newState == .ready {
+                TTSManager.shared.reapplyBackendPreference()
+            }
+        }
+    }
+}
+
+/// The Supertonic-3 model download row — mirrors `KokoroDownloadRow`.
+@available(iOS 16, *)
+private struct Supertonic3DownloadRow: View {
+    @ObservedObject private var tts = TTSManager.shared
+
+    var body: some View {
+        if let model = tts.supertonic3ModelManager {
+            Supertonic3DownloadRowBody(model: model)
+                .onAppear { model.refreshInstalledState() }
+        }
+    }
+}
+
+@available(iOS 16, *)
+private struct Supertonic3DownloadRowBody: View {
+    @ObservedObject var model: Supertonic3ModelManager
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .notInstalled:
+                Toggle(NSLocalizedString("TTS_SUPERTONIC3_WIFI_ONLY"), isOn: Binding(
+                    get: { model.wifiOnly },
+                    set: { model.wifiOnly = $0 }
+                ))
+                Button(NSLocalizedString("TTS_SUPERTONIC3_DOWNLOAD")) {
+                    model.startDownload()
+                }
+            case .downloading(let progress):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(NSLocalizedString("TTS_SUPERTONIC3_DOWNLOADING"))
+                    ProgressView(value: progress)
+                }
+                Button(NSLocalizedString("TTS_SUPERTONIC3_CANCEL"), role: .cancel) {
+                    model.cancelDownload()
+                }
+            case .ready:
+                EmptyView()
+            case .failed(let reason):
+                Text("\(NSLocalizedString("TTS_SUPERTONIC3_FAILED")): \(reason)")
+                    .foregroundStyle(.red)
+                Button(NSLocalizedString("TTS_SUPERTONIC3_RETRY")) {
+                    model.retry()
+                }
+            }
+        }
+        .onChange(of: model.state) { newState in
             if newState == .ready {
                 TTSManager.shared.reapplyBackendPreference()
             }

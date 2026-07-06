@@ -607,6 +607,9 @@
 		020784B72F8A24FA8DB0DDCD /* KokoroModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */; };
 		A992DE0F08242174950D50B5 /* KokoroSpeechBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */; };
 		4AFCB78B0EB2636659571931 /* SpeechBackendRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DE4AD83A9C6B90D16D5FEA /* SpeechBackendRegistry.swift */; };
+		01AB3F1A2B3C4D5E6F7A8B01 /* Supertonic3ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AB3F1A2B3C4D5E6F7A8B02 /* Supertonic3ModelManager.swift */; };
+		01AB3F1A2B3C4D5E6F7A8B03 /* Supertonic3SpeechBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AB3F1A2B3C4D5E6F7A8B04 /* Supertonic3SpeechBackend.swift */; };
+		01AB3F1A2B3C4D5E6F7A8B05 /* Supertonic3_M1.json in Resources */ = {isa = PBXBuildFile; fileRef = 01AB3F1A2B3C4D5E6F7A8B06 /* Supertonic3_M1.json */; };
 		30EA96012FC051B5000BFEDF /* MisakiSwiftLite in Frameworks */ = {isa = PBXBuildFile; productRef = 30EA96002FC051B5000BFEDF /* MisakiSwiftLite */; };
 		30EAA0022FC051B5000BFEDF /* KokoroG2PProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EAA0012FC051B5000BFEDF /* KokoroG2PProvider.swift */; };
 		30EAA0062FC051B5000BFEDF /* MisakiKokoroG2PProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EAA0052FC051B5000BFEDF /* MisakiKokoroG2PProvider.swift */; };
@@ -1109,6 +1112,9 @@
 		86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroModelManager.swift; path = iOS/UI/Reader/TTS/KokoroModelManager.swift; sourceTree = SOURCE_ROOT; };
 		05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroSpeechBackend.swift; path = iOS/UI/Reader/TTS/KokoroSpeechBackend.swift; sourceTree = SOURCE_ROOT; };
 		E2DE4AD83A9C6B90D16D5FEA /* SpeechBackendRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeechBackendRegistry.swift; path = iOS/UI/Reader/TTS/SpeechBackendRegistry.swift; sourceTree = SOURCE_ROOT; };
+		01AB3F1A2B3C4D5E6F7A8B02 /* Supertonic3ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Supertonic3ModelManager.swift; path = iOS/UI/Reader/TTS/Supertonic3ModelManager.swift; sourceTree = SOURCE_ROOT; };
+		01AB3F1A2B3C4D5E6F7A8B04 /* Supertonic3SpeechBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Supertonic3SpeechBackend.swift; path = iOS/UI/Reader/TTS/Supertonic3SpeechBackend.swift; sourceTree = SOURCE_ROOT; };
+		01AB3F1A2B3C4D5E6F7A8B06 /* Supertonic3_M1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = Supertonic3_M1.json; path = iOS/UI/Reader/TTS/Supertonic3_M1.json; sourceTree = SOURCE_ROOT; };
 		30EAA0012FC051B5000BFEDF /* KokoroG2PProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KokoroG2PProvider.swift; path = iOS/UI/Reader/TTS/KokoroG2P/KokoroG2PProvider.swift; sourceTree = SOURCE_ROOT; };
 		30EAA0052FC051B5000BFEDF /* MisakiKokoroG2PProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MisakiKokoroG2PProvider.swift; path = iOS/UI/Reader/TTS/KokoroG2P/MisakiKokoroG2PProvider.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -1416,6 +1422,9 @@
 				86E802DC1C88B70448CCD6D7 /* KokoroModelManager.swift */,
 				05F7D4B971D8E8F78D23FC4D /* KokoroSpeechBackend.swift */,
 				E2DE4AD83A9C6B90D16D5FEA /* SpeechBackendRegistry.swift */,
+				01AB3F1A2B3C4D5E6F7A8B02 /* Supertonic3ModelManager.swift */,
+				01AB3F1A2B3C4D5E6F7A8B04 /* Supertonic3SpeechBackend.swift */,
+				01AB3F1A2B3C4D5E6F7A8B06 /* Supertonic3_M1.json */,
 				30EAA0012FC051B5000BFEDF /* KokoroG2PProvider.swift */,
 				30EAA0052FC051B5000BFEDF /* MisakiKokoroG2PProvider.swift */,
 			);
@@ -2579,6 +2588,7 @@
 				FB4ADCA72815A75700F6D7FB /* InfoPlist.strings in Resources */,
 				FB4ADCA22814DD4600F6D7FB /* Localizable.strings in Resources */,
 				FB1DD89D2EF1A6BC0007FC78 /* AppIcon.icon in Resources */,
+				01AB3F1A2B3C4D5E6F7A8B05 /* Supertonic3_M1.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3044,6 +3054,8 @@
 				020784B72F8A24FA8DB0DDCD /* KokoroModelManager.swift in Sources */,
 				A992DE0F08242174950D50B5 /* KokoroSpeechBackend.swift in Sources */,
 				4AFCB78B0EB2636659571931 /* SpeechBackendRegistry.swift in Sources */,
+				01AB3F1A2B3C4D5E6F7A8B01 /* Supertonic3ModelManager.swift in Sources */,
+				01AB3F1A2B3C4D5E6F7A8B03 /* Supertonic3SpeechBackend.swift in Sources */,
 				30EAA0022FC051B5000BFEDF /* KokoroG2PProvider.swift in Sources */,
 				30EAA0062FC051B5000BFEDF /* MisakiKokoroG2PProvider.swift in Sources */,
 			);

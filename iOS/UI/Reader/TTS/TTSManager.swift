@@ -263,6 +263,7 @@ final class TTSManager: NSObject, ObservableObject {
         // Reader Settings.
         if #available(iOS 16, *) {
             registry.kokoroModelManager?.refreshInstalledStateSync()
+            registry.supertonic3ModelManager?.refreshInstalledStateSync()
         }
         let active = registry.currentBackend(preferredID: preferred)
         self.init(backend: active, registry: registry, now: now)
@@ -339,6 +340,12 @@ final class TTSManager: NSObject, ObservableObject {
     @available(iOS 16, *)
     var kokoroModelManager: KokoroModelManager? {
         registry?.kokoroModelManager
+    }
+
+    /// The Supertonic-3 model manager (iOS 16+), for the settings download row.
+    @available(iOS 16, *)
+    var supertonic3ModelManager: Supertonic3ModelManager? {
+        registry?.supertonic3ModelManager
     }
 
     /// Re-resolve the active backend against the current `currentBackendID`
