@@ -507,9 +507,7 @@ final class TTSManager: NSObject, ObservableObject {
     func seek(toProgress fraction: Double) {
         guard isActive else { return }
         let f = min(1.0, max(0.0, fraction))
-        let estimate = currentEstimate()
-        if currentNormalizedChapter != nil,
-           let duration = estimate.chapterDurationSec, duration > 0 {
+        if let duration = currentEstimate().chapterDurationSec, duration > 0 {
             seekToElapsed(f * duration)
             return
         }
@@ -589,6 +587,12 @@ final class TTSManager: NSObject, ObservableObject {
     /// reads them internally for Now Playing metadata.
     var novelTitleForTesting: String { novelTitle }
     var currentChapterTitleForTesting: String { currentChapterTitle }
+    /// Test seam: drop the normalized-chapter state so tests can force
+    /// seek(toProgress:)'s paragraph-span fallback path.
+    func clearNormalizedChapterForTesting() {
+        currentNormalizedChapter = nil
+        normalizedChapterCache.removeAll()
+    }
     #endif
 
     // MARK: - Internals
@@ -883,7 +887,9 @@ final class TTSManager: NSObject, ObservableObject {
         seek(to: newPosition)
     }
 
-    /// Handler for `MPRemoteCommandCenter.changePlaybackPositionCommand`.
+    /// Seek to an absolute elapsed time within the current chapter. Handler
+    /// for `MPRemoteCommandCenter.changePlaybackPositionCommand` (lockscreen
+    /// scrubber) and the time-based path of `seek(toProgress:)`.
     private func seekToElapsed(_ elapsed: TimeInterval) {
         guard isActive, let chapter = currentNormalizedChapter else { return }
         let position = TTSEstimator.position(

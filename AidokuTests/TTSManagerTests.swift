@@ -722,4 +722,43 @@ private final class StubProvider: TTSChapterProvider {
         manager.seek(toProgress: 0.0)
         #expect(manager.currentParagraphIndexForTesting == 0)
     }
+
+    @Test("seek(toProgress:) paragraph-span fallback is chapter-local too")
+    func seekToProgressFallbackIsChapterLocal() async {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.\n\nZ.")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
+        manager.skipToNextChapter()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        #expect(manager.currentChapterKey == "c2")
+
+        // Drop the normalized-chapter state so the estimator path is
+        // unavailable and seek(toProgress:) must take the paragraph-span
+        // fallback. Its first/last math must still be chapter-local:
+        // c2 spans global indices 3...5.
+        manager.clearNormalizedChapterForTesting()
+        manager.seek(toProgress: 1.0)
+        #expect(manager.currentChapterKey == "c2")
+        #expect(manager.currentParagraphIndexForTesting == 5)
+        manager.seek(toProgress: 0.0)
+        #expect(manager.currentChapterKey == "c2")
+        #expect(manager.currentParagraphIndexForTesting == 3)
+    }
+
+    @Test("seek(toProgress:) clamps overshoot to the chapter's bounds")
+    func seekToProgressClampsOvershoot() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.\n\nC.\n\nD.", startIndex: 1)
+        // The scrub gesture routinely feeds values past both ends.
+        manager.seek(toProgress: 1.5)
+        #expect(manager.currentParagraphIndexForTesting == 3)
+        manager.seek(toProgress: -0.3)
+        #expect(manager.currentParagraphIndexForTesting == 0)
+    }
 }
