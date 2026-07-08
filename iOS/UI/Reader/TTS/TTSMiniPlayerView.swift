@@ -73,12 +73,15 @@ struct TTSMiniPlayerView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.primary)
                     .frame(width: 34, height: 34)
-                    .contentShape(Rectangle())
+                    // Ink stays 34pt; inset extends the hit target to 44pt.
+                    .contentShape(Rectangle().inset(by: -5))
             }
             .accessibilityLabel(tts.isPlaying ? NSLocalizedString("PAUSE") : NSLocalizedString("PLAY"))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(tts.currentChapterTitle)
+                    // Intentionally sub-scale (12/10.5pt vs the expanded 13/11.5/10pt
+                    // scale) to keep the collapsed pill compact, per the rev-2 mockup.
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                 Text(timeLeftLabel)
@@ -92,9 +95,10 @@ struct TTSMiniPlayerView: View {
             Button { tts.stop() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color.secondary.opacity(0.7))
+                    .foregroundColor(Color.primary.opacity(0.45))
                     .frame(width: 34, height: 34)
-                    .contentShape(Rectangle())
+                    // Ink stays 34pt; inset extends the hit target to 44pt.
+                    .contentShape(Rectangle().inset(by: -5))
             }
             .accessibilityLabel(NSLocalizedString("TTS_STOP_LISTENING"))
         }
@@ -126,7 +130,7 @@ struct TTSMiniPlayerView: View {
                 Button { collapse() } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.secondary.opacity(0.7))
+                        .foregroundColor(Color.primary.opacity(0.45))
                         .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
@@ -159,9 +163,11 @@ struct TTSMiniPlayerView: View {
                         .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                         .foregroundColor(Color.primary.opacity(0.65))
                         .frame(minWidth: 44, minHeight: 32)
-                        .contentShape(Rectangle())
+                        // Ink stays 32pt tall; inset extends the hit target to 44pt.
+                        .contentShape(Rectangle().inset(by: -6))
                 }
                 .accessibilityLabel(NSLocalizedString("TTS_SPEECH_RATE"))
+                .accessibilityValue(Text(String(format: "%.1f×", tts.rate)))
                 Spacer()
                 HStack(spacing: 12) {
                     sleepMenu
@@ -170,7 +176,8 @@ struct TTSMiniPlayerView: View {
                             .font(.system(size: 13))
                             .foregroundColor(Color.primary.opacity(0.45))
                             .frame(width: 34, height: 34)
-                            .contentShape(Rectangle())
+                            // Ink stays 34pt; inset extends the hit target to 44pt.
+                            .contentShape(Rectangle().inset(by: -5))
                     }
                     .accessibilityLabel(NSLocalizedString("TTS_JUMP_TO_CURRENT"))
                 }
@@ -220,30 +227,54 @@ struct TTSMiniPlayerView: View {
             }
 
             HStack {
-                Text(Self.timeString(elapsedSeconds))
+                Text(tts.timeRemaining == nil ? "—:—" : Self.timeString(elapsedSeconds))
                 Spacer()
-                Text("−" + Self.timeString(tts.timeRemaining ?? 0))
+                Text(tts.timeRemaining.map { "−" + Self.timeString($0) } ?? "—:—")
             }
             .font(.system(size: 10).monospacedDigit())
-            .foregroundColor(Color.secondary.opacity(0.8))
+            .foregroundColor(Color.primary.opacity(0.45))
         }
     }
 
     private var sleepMenu: some View {
         Menu {
-            Button(NSLocalizedString("TTS_SLEEP_OFF")) { tts.setSleepTimer(.off) }
-            Button(NSLocalizedString("TTS_SLEEP_15_MIN")) { tts.setSleepTimer(.minutes(15)) }
-            Button(NSLocalizedString("TTS_SLEEP_30_MIN")) { tts.setSleepTimer(.minutes(30)) }
-            Button(NSLocalizedString("TTS_SLEEP_60_MIN")) { tts.setSleepTimer(.minutes(60)) }
-            Button(NSLocalizedString("TTS_SLEEP_END_OF_CHAPTER")) { tts.setSleepTimer(.endOfChapter) }
+            // Picker-in-Menu renders native checkmarks on the armed option.
+            Picker(
+                NSLocalizedString("TTS_SLEEP_TIMER"),
+                selection: Binding(
+                    get: { tts.sleepTimer },
+                    set: { tts.setSleepTimer($0) }
+                )
+            ) {
+                Text(NSLocalizedString("TTS_SLEEP_OFF")).tag(TTSManager.SleepTimer.off)
+                Text(NSLocalizedString("TTS_SLEEP_15_MIN")).tag(TTSManager.SleepTimer.minutes(15))
+                Text(NSLocalizedString("TTS_SLEEP_30_MIN")).tag(TTSManager.SleepTimer.minutes(30))
+                Text(NSLocalizedString("TTS_SLEEP_60_MIN")).tag(TTSManager.SleepTimer.minutes(60))
+                Text(NSLocalizedString("TTS_SLEEP_END_OF_CHAPTER")).tag(TTSManager.SleepTimer.endOfChapter)
+            }
         } label: {
             Image(systemName: tts.sleepTimer == .off ? "moon.zzz" : "moon.zzz.fill")
                 .font(.system(size: 13))
                 .foregroundColor(tts.sleepTimer == .off ? Color.primary.opacity(0.45) : Color.primary.opacity(0.8))
                 .frame(width: 34, height: 34)
-                .contentShape(Rectangle())
+                // Ink stays 34pt; inset extends the hit target to 44pt.
+                .contentShape(Rectangle().inset(by: -5))
         }
         .accessibilityLabel(NSLocalizedString("TTS_SLEEP_TIMER"))
+        .accessibilityValue(Text(sleepTimerValueLabel))
+    }
+
+    /// Localized description of the current sleep-timer setting, for the
+    /// sleep menu's accessibility value.
+    private var sleepTimerValueLabel: String {
+        switch tts.sleepTimer {
+        case .off: return NSLocalizedString("TTS_SLEEP_OFF")
+        case .minutes(15): return NSLocalizedString("TTS_SLEEP_15_MIN")
+        case .minutes(30): return NSLocalizedString("TTS_SLEEP_30_MIN")
+        case .minutes(60): return NSLocalizedString("TTS_SLEEP_60_MIN")
+        case .minutes(let minutes): return "\(minutes) min"
+        case .endOfChapter: return NSLocalizedString("TTS_SLEEP_END_OF_CHAPTER")
+        }
     }
 
     // MARK: - Helpers
@@ -282,6 +313,9 @@ struct TTSMiniPlayerView: View {
 
     private static func timeString(_ time: TimeInterval) -> String {
         let total = Int(time.rounded())
+        if total >= 3600 {
+            return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+        }
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

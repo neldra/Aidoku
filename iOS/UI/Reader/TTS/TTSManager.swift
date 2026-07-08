@@ -58,7 +58,7 @@ final class TTSManager: NSObject, ObservableObject {
     /// Sleep-timer setting for the mini-player. `.minutes` stops the session
     /// when its wall-clock deadline passes; `.endOfChapter` stops at the
     /// next chapter boundary instead of rolling into the following chapter.
-    enum SleepTimer: Equatable {
+    enum SleepTimer: Equatable, Hashable {
         case off
         case minutes(Int)
         case endOfChapter
