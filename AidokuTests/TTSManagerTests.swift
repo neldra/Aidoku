@@ -843,4 +843,65 @@ private final class StubProvider: TTSChapterProvider {
         manager.endFineProgressUpdates()
         #expect(manager.fineProgressActiveForTesting == false)
     }
+
+    @Test("minutes sleep timer stops the session when its deadline passes")
+    func sleepTimerMinutesFires() {
+        var currentTime = Date(timeIntervalSince1970: 0)
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend, now: { currentTime })
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.", startIndex: 0)
+
+        manager.setSleepTimer(.minutes(30))
+        #expect(manager.sleepTimer == .minutes(30))
+
+        // Premature fire (deadline not reached): must be a no-op.
+        manager.sleepTimerDidFire()
+        #expect(manager.isActive)
+        #expect(manager.sleepTimer == .minutes(30))
+
+        // Past the deadline: stops and resets.
+        currentTime = Date(timeIntervalSince1970: 31 * 60)
+        manager.sleepTimerDidFire()
+        #expect(!manager.isActive)
+        #expect(manager.sleepTimer == .off)
+    }
+
+    @Test("pause does not cancel the sleep timer; stop does")
+    func sleepTimerSurvivesPauseClearedByStop() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.", startIndex: 0)
+
+        manager.setSleepTimer(.minutes(15))
+        manager.pause()
+        #expect(manager.sleepTimer == .minutes(15))   // Books semantics
+
+        manager.stop()
+        #expect(manager.sleepTimer == .off)
+    }
+
+    @Test("re-setting the sleep timer replaces the previous one; off cancels")
+    func sleepTimerReplaceAndCancel() {
+        var currentTime = Date(timeIntervalSince1970: 0)
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend, now: { currentTime })
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.", startIndex: 0)
+
+        manager.setSleepTimer(.minutes(15))
+        manager.setSleepTimer(.minutes(60))           // replaces
+        currentTime = Date(timeIntervalSince1970: 20 * 60)
+        manager.sleepTimerDidFire()                   // 15-min deadline is dead
+        #expect(manager.isActive)                     // 60-min governs; still active
+
+        manager.setSleepTimer(.off)                   // cancel
+        currentTime = Date(timeIntervalSince1970: 90 * 60)
+        manager.sleepTimerDidFire()
+        #expect(manager.isActive)                     // no timer → no-op
+    }
 }

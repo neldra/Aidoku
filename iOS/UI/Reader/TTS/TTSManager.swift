@@ -55,6 +55,18 @@ final class TTSManager: NSObject, ObservableObject {
     /// Estimated seconds left in the current chapter, or nil when no
     /// normalized chapter/estimate is available (mini-player shows "—:—").
     @Published private(set) var timeRemaining: TimeInterval?
+    /// Sleep-timer setting for the mini-player. `.minutes` stops the session
+    /// when its wall-clock deadline passes; `.endOfChapter` stops at the
+    /// next chapter boundary instead of rolling into the following chapter.
+    enum SleepTimer: Equatable {
+        case off
+        case minutes(Int)
+        case endOfChapter
+    }
+
+    @Published private(set) var sleepTimer: SleepTimer = .off
+    private var sleepDeadline: Date?
+    private var sleepTask: Task<Void, Never>?
     private var novelTitle = ""
     private var currentChapterTitle = ""
     /// When true, the chapter title is spoken before the first paragraph of
@@ -284,6 +296,7 @@ final class TTSManager: NSObject, ObservableObject {
         // Dropping a Task handle doesn't cancel it; without this a
         // deallocated manager (tests) leaves a zombie tick for up to 1 s.
         fineProgressTask?.cancel()
+        sleepTask?.cancel()
     }
 
     // MARK: - Settings surface
@@ -562,6 +575,38 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
+    /// Set/replace/cancel the sleep timer. Only meaningful during an active
+    /// session; stop() from any source resets to `.off`. Pause deliberately
+    /// does NOT cancel (Books semantics — the countdown is wall-clock).
+    func setSleepTimer(_ timer: SleepTimer) {
+        guard isActive else { return }
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepDeadline = nil
+        sleepTimer = timer
+        guard case .minutes(let minutes) = timer else { return }
+        let deadline = now().addingTimeInterval(TimeInterval(minutes) * 60)
+        sleepDeadline = deadline
+        // The Task only schedules the fire; sleepTimerDidFire re-validates
+        // against the injected clock, so tests drive it directly.
+        sleepTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(minutes) * 60 * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.sleepTimerDidFire()
+        }
+    }
+
+    /// Deadline check + stop. Internal (not private) so tests can invoke the
+    /// fire path directly with a manipulated `now` — the scheduling Task
+    /// above is deliberately not unit-tested.
+    func sleepTimerDidFire() {
+        guard isActive,
+              case .minutes = sleepTimer,
+              let deadline = sleepDeadline,
+              now() >= deadline else { return }
+        stop()
+    }
+
     /// Restart the current chapter from its first paragraph.
     func resetChapter() {
         performQueueMutation {
@@ -594,6 +639,10 @@ final class TTSManager: NSObject, ObservableObject {
         currentLocalDisplayRange = nil
         chapterProgress = 0
         timeRemaining = nil
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepDeadline = nil
+        sleepTimer = .off
         deactivateAudioSession()
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = nil
