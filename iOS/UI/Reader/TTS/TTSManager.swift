@@ -580,17 +580,21 @@ final class TTSManager: NSObject, ObservableObject {
     /// does NOT cancel (Books semantics — the countdown is wall-clock).
     func setSleepTimer(_ timer: SleepTimer) {
         guard isActive else { return }
+        // Non-positive durations are meaningless; treat as cancel rather
+        // than trapping in the UInt64 conversion below. Validated before
+        // publishing so `.minutes(0)` never emits before flipping to `.off`.
+        if case .minutes(let minutes) = timer, minutes <= 0 {
+            sleepTask?.cancel()
+            sleepTask = nil
+            sleepDeadline = nil
+            sleepTimer = .off
+            return
+        }
         sleepTask?.cancel()
         sleepTask = nil
         sleepDeadline = nil
         sleepTimer = timer
         guard case .minutes(let minutes) = timer else { return }
-        // Non-positive durations are meaningless; treat as cancel rather
-        // than trapping in the UInt64 conversion below.
-        guard minutes > 0 else {
-            sleepTimer = .off
-            return
-        }
         let deadline = now().addingTimeInterval(TimeInterval(minutes) * 60)
         sleepDeadline = deadline
         // The Task only schedules the fire; sleepTimerDidFire re-validates
@@ -1315,9 +1319,10 @@ final class TTSManager: NSObject, ObservableObject {
         // End-of-chapter sleep timer: the paragraph that just finished was
         // the chapter's last → end the session here rather than advancing
         // into an appended chapter or kicking off a next-chapter load.
-        // Only natural finishes consume the timer; an explicit user
-        // chapter-skip bypasses consumption (honorEndOfChapterTimer: false)
-        // and the still-armed timer re-applies to the new chapter's end.
+        // Natural and failure finishes both consume the timer; only an
+        // explicit user chapter-skip bypasses consumption
+        // (honorEndOfChapterTimer: false) and the still-armed timer
+        // re-applies to the new chapter's end.
         if honorEndOfChapterTimer, sleepTimer == .endOfChapter,
            queue.index >= queue.lastIndexOfCurrentChapter {
             stop()

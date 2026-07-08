@@ -946,13 +946,13 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.sleepTimer == .endOfChapter)
 
         // Natural finish of c2's last paragraph: NOW the timer consumes.
-        let spokenCount = backend.utteranceIDs.count
-        backend.simulateFinish(utteranceID: backend.utteranceIDs[spokenCount - 1]) // finishes "X."
+        backend.simulateFinish(utteranceID: backend.utteranceIDs.last!) // finishes "X."
         #expect(manager.isActive)
-        backend.simulateFinish(utteranceID: backend.utteranceIDs.last!)            // finishes "Y." (last of c2)
+        backend.simulateFinish(utteranceID: backend.utteranceIDs.last!) // finishes "Y." (last of c2)
         try? await Task.sleep(nanoseconds: 100_000_000)
         #expect(!manager.isActive)
         #expect(manager.sleepTimer == .off)
+        #expect(backend.spoken == ["A.", "X.", "Y."])
     }
 
     @Test("non-positive minute sleep timers are treated as off")
