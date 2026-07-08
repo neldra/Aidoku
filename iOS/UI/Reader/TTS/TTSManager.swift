@@ -499,10 +499,25 @@ final class TTSManager: NSObject, ObservableObject {
     func skipForward()  { performQueueMutation { queue.advance() != nil } }
     func skipBackward() { performQueueMutation { queue.rewind() != nil } }
 
+    /// Scrub to a 0...1 fraction of the CURRENT CHAPTER (chapter-local, the
+    /// same basis the lockscreen scrubber uses — not the whole multi-chapter
+    /// queue). Time-based via the estimator when a normalized chapter is
+    /// available (char-level precision, honoring merged paragraphs);
+    /// paragraph-span fallback otherwise.
     func seek(toProgress fraction: Double) {
+        guard isActive else { return }
+        let f = min(1.0, max(0.0, fraction))
+        let estimate = currentEstimate()
+        if currentNormalizedChapter != nil,
+           let duration = estimate.chapterDurationSec, duration > 0 {
+            seekToElapsed(f * duration)
+            return
+        }
         performQueueMutation {
             guard queue.count > 0 else { return false }
-            queue.seek(to: Int((fraction * Double(queue.count - 1)).rounded()))
+            let first = queue.firstIndexOfCurrentChapter
+            let last = queue.lastIndexOfCurrentChapter
+            queue.seek(to: first + Int((f * Double(last - first)).rounded()))
             return true
         }
     }

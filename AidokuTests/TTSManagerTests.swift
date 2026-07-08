@@ -682,4 +682,44 @@ private final class StubProvider: TTSChapterProvider {
         #expect(backend.spoken.last == "gamma.")
         #expect(manager.isPlaying)
     }
+
+    // MARK: - seek(toProgress:)
+
+    @Test("seek(toProgress:) is chapter-local after a next chapter is appended")
+    func seekToProgressIsChapterLocal() async {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.\n\nZ.")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.\n\nC.", startIndex: 0)
+        // Roll into c2 so the queue holds both chapters (6 paragraphs total).
+        manager.skipToNextChapter()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        #expect(manager.currentChapterKey == "c2")
+
+        // Scrub to the start of the chapter: must land on c2's first paragraph
+        // (global index 3), NOT the queue's first paragraph (global index 0).
+        manager.seek(toProgress: 0.0)
+        #expect(manager.currentChapterKey == "c2")
+        #expect(manager.currentParagraphIndexForTesting == 3)
+
+        // Scrub to the end: c2's last paragraph (global 5), not past it.
+        manager.seek(toProgress: 1.0)
+        #expect(manager.currentChapterKey == "c2")
+        #expect(manager.currentParagraphIndexForTesting == 5)
+    }
+
+    @Test("seek(toProgress:) still works on a single-chapter queue")
+    func seekToProgressSingleChapter() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.\n\nC.\n\nD.", startIndex: 0)
+        manager.seek(toProgress: 1.0)
+        #expect(manager.currentParagraphIndexForTesting == 3)
+        manager.seek(toProgress: 0.0)
+        #expect(manager.currentParagraphIndexForTesting == 0)
+    }
 }
