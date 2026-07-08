@@ -280,6 +280,12 @@ final class TTSManager: NSObject, ObservableObject {
         self.init(backend: active, registry: registry, now: now)
     }
 
+    deinit {
+        // Dropping a Task handle doesn't cancel it; without this a
+        // deallocated manager (tests) leaves a zombie tick for up to 1 s.
+        fineProgressTask?.cancel()
+    }
+
     // MARK: - Settings surface
 
     /// Backends the settings engine picker can offer. Empty when there is no
@@ -533,8 +539,9 @@ final class TTSManager: NSObject, ObservableObject {
 
     /// The mini-player calls this when its expanded state appears; while any
     /// observer is registered a 1 s tick re-publishes `chapterProgress`/
-    /// `timeRemaining` so the scrub bar moves between paragraph boundaries.
-    /// Balanced with `endFineProgressUpdates()`; idempotent per observer.
+    /// `timeRemaining` so the scrub bar moves between paragraph boundaries
+    /// while playing. Balanced with `endFineProgressUpdates()`; idempotent
+    /// per observer.
     func beginFineProgressUpdates() {
         fineProgressObservers += 1
         guard fineProgressTask == nil else { return }
@@ -542,7 +549,7 @@ final class TTSManager: NSObject, ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard let self, !Task.isCancelled else { return }
-                if self.isActive { self.publishProgress() }
+                if self.isActive, self.isPlaying { self.publishProgress() }
             }
         }
     }
