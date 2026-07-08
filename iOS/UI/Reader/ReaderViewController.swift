@@ -366,6 +366,29 @@ class ReaderViewController: BaseObservingViewController {
         disableSwipeGestures()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // self-heal the mini-player clearance: the bar show/hide notification
+        // can measure a mid-flight toolbar frame, so re-read it once layout
+        // settles (no animation in a layout pass; only touch it on change to
+        // avoid re-dirtying layout every pass)
+        let inset = ttsMiniPlayerBottomInset
+        if let constraint = ttsMiniPlayerBottomConstraint, constraint.constant != inset {
+            constraint.constant = inset
+        }
+        if #unavailable(iOS 16.0) {
+            // pre-16 UIHostingController has no sizingOptions and doesn't
+            // invalidate its intrinsic size when the SwiftUI content grows;
+            // best-effort re-measure when the reported size drifts from the
+            // frame (guarded so we don't re-dirty layout every pass — iOS 15
+            // may still snap to the new size instead of animating)
+            if let hostView = ttsMiniPlayerHost?.view, !hostView.isHidden,
+               abs(hostView.intrinsicContentSize.height - hostView.bounds.height) > 0.5 {
+                hostView.invalidateIntrinsicContentSize()
+            }
+        }
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
 
@@ -1335,12 +1358,38 @@ extension ReaderViewController {
     }
 
     /// Bottom clearance for the mini-player capsule: above the home indicator
-    /// when the bars are hidden; lifted clear of the toolbar when visible
-    /// (-58 = ~44pt toolbar height + 14pt gap above it).
-    private var ttsMiniPlayerBottomInset: CGFloat { barsHidden ? -24 : -58 }
+    /// when the bars are hidden; lifted clear of the toolbar when visible.
+    /// The toolbar clearance is measured from the actual bar frame because the
+    /// iOS 26 floating bars sit higher than the classic docked toolbar, so a
+    /// fixed constant leaves a gap of page content between capsule and bar.
+    private var ttsMiniPlayerBottomInset: CGFloat {
+        guard !barsHidden else { return -24 }
+        // same KVC access to the floating bar container that showBars()/
+        // hideBars() use on iOS 26; pre-26 the toolbar is a regular UIToolbar
+        let bar: UIView? = if #available(iOS 26.0, *) {
+            navigationController?.value(forKey: "_floatingBarContainerView") as? UIView
+        } else {
+            navigationController?.toolbar
+        }
+        // fallback for unmeasurable bars: ~44pt toolbar height + 14pt gap
+        let fallback: CGFloat = -58
+        guard let bar, bar.frame.width > 0, bar.frame.height > 0 else { return fallback }
+        let barTop = bar.convert(bar.bounds, to: view).minY
+        let inset = -(view.safeAreaLayoutGuide.layoutFrame.maxY - barTop + 10)
+        // reject mid-flight/offscreen frames (bar below the safe area or an
+        // implausibly tall overlap)
+        guard inset > -200, inset < -10 else { return fallback }
+        return min(inset, -24)
+    }
 
     private func setupTTSMiniPlayer() {
         let host = UIHostingController(rootView: TTSMiniPlayerView())
+        if #available(iOS 16.0, *) {
+            // track the SwiftUI content's size, otherwise the hosting view
+            // keeps its collapsed frame when the capsule expands and the
+            // expanded content clips off the bottom of the screen
+            host.sizingOptions = .intrinsicContentSize
+        }
         host.view.backgroundColor = .clear
         addChild(host)
         view.addSubview(host.view)
@@ -1369,6 +1418,10 @@ extension ReaderViewController {
     }
 
     private func ttsMiniPlayerBarsChanged() {
+        // The bar notifications fire from the first animation's completion,
+        // before the toolbar frame settles in the second — so this can read a
+        // mid-flight frame. viewDidLayoutSubviews re-reads the inset once
+        // layout settles and corrects it a beat later.
         ttsMiniPlayerBottomConstraint?.constant = ttsMiniPlayerBottomInset
         UIView.animate(withDuration: CATransaction.animationDuration()) {
             self.view.layoutIfNeeded()
