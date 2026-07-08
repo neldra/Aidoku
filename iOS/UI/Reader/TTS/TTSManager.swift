@@ -585,6 +585,12 @@ final class TTSManager: NSObject, ObservableObject {
         sleepDeadline = nil
         sleepTimer = timer
         guard case .minutes(let minutes) = timer else { return }
+        // Non-positive durations are meaningless; treat as cancel rather
+        // than trapping in the UInt64 conversion below.
+        guard minutes > 0 else {
+            sleepTimer = .off
+            return
+        }
         let deadline = now().addingTimeInterval(TimeInterval(minutes) * 60)
         sleepDeadline = deadline
         // The Task only schedules the fire; sleepTimerDidFire re-validates
@@ -1303,6 +1309,13 @@ final class TTSManager: NSObject, ObservableObject {
 
     /// Called when an utterance finishes naturally: advance, or load next chapter.
     fileprivate func handleUtteranceFinished(continuePlaying shouldContinuePlaying: Bool = true) {
+        // End-of-chapter sleep timer: the paragraph that just finished was
+        // the chapter's last → end the session here rather than advancing
+        // into an appended chapter or kicking off a next-chapter load.
+        if sleepTimer == .endOfChapter, queue.index >= queue.lastIndexOfCurrentChapter {
+            stop()
+            return
+        }
         if queue.advance() != nil {
             activateCurrent(playing: shouldContinuePlaying)
             return
