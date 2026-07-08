@@ -462,9 +462,9 @@ private final class StubProvider: TTSChapterProvider {
         let manager = TTSManager(backend: MockBackend())
         manager.start(provider: StubProvider(), chapterKey: "c1",
                       text: "A.\n\nB.\n\nC.", startIndex: 2)
-        #expect(manager.chapterProgressForTesting == 1)             // last paragraph of c1
+        #expect(manager.queueChapterProgressForTesting == 1)        // last paragraph of c1
         manager.userDidNavigate(toChapterKey: "c2", text: "X.\n\nY.\n\nZ.")
-        #expect(manager.chapterProgressForTesting == 0)             // reset at the top of c2
+        #expect(manager.queueChapterProgressForTesting == 0)        // reset at the top of c2
     }
 
     @Test("announces the chapter title once when entering each chapter")
@@ -770,13 +770,16 @@ private final class StubProvider: TTSChapterProvider {
         manager.start(provider: provider, chapterKey: "c1",
                       text: "A.\n\nB.\n\nC.\n\nD.", startIndex: 0)
         let initialRemaining = manager.timeRemaining
-        #expect(manager.chapterProgress >= 0 && manager.chapterProgress < 0.5)
+        // Deterministic fixture: 4 equal paragraphs, cursor at the top, no
+        // didStart from MockBackend so no wall-clock interpolation.
+        #expect(manager.chapterProgress == 0)
         #expect(initialRemaining != nil)
 
         manager.skipForward()
         manager.skipForward()
 
-        #expect(manager.chapterProgress > 0.3)
+        // Paragraph 2 of 4 equal paragraphs: exactly halfway.
+        #expect(abs(manager.chapterProgress - 0.5) < 0.0001)
         if let initialRemaining, let nowRemaining = manager.timeRemaining {
             #expect(nowRemaining < initialRemaining)
         } else {
@@ -794,5 +797,28 @@ private final class StubProvider: TTSChapterProvider {
         manager.stop()
         #expect(manager.chapterProgress == 0)
         #expect(manager.timeRemaining == nil)
+    }
+
+    @Test("interpolated progress is capped at the next paragraph boundary")
+    func interpolatedProgressCapsAtParagraphBoundary() {
+        var currentTime = Date(timeIntervalSince1970: 0)
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend, now: { currentTime })
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.\n\nC.\n\nD.", startIndex: 0)
+        backend.simulateStart(utteranceID: backend.utteranceIDs[0])
+
+        // Wall clock runs far past the whole chapter's estimated duration
+        // while the cursor is still inside paragraph 0.
+        currentTime = Date(timeIntervalSince1970: 1000)
+        manager.publishProgressForTesting()
+
+        // Interpolation must cap at paragraph 1's boundary (0.25 with 4
+        // equal paragraphs), never sweep past it — otherwise the cursor
+        // advancing would snap progress visibly backward.
+        #expect(manager.chapterProgress > 0)
+        #expect(manager.chapterProgress <= 0.25 + 0.0001)
+        #expect(manager.chapterProgress < 0.5)
     }
 }

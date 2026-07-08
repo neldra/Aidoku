@@ -589,9 +589,15 @@ final class TTSManager: NSObject, ObservableObject {
     /// chapter) queue. Production reads `currentLocalDisplayRange`; tests need
     /// the global value to verify cross-chapter ordering after `queue.appendChapter`.
     var currentParagraphIndexForTesting: Int { queue.index }
-    /// Test inspection: chapter-local progress (0..1) that resets per chapter.
-    /// Production reads it indirectly via `currentEstimate` for the lockscreen.
-    var chapterProgressForTesting: Double { queue.chapterProgress }
+    /// Test inspection: the queue's paragraph-count chapter progress (0..1)
+    /// that resets per chapter. Distinct from the published time-based
+    /// `chapterProgress`. Production reads it indirectly via `currentEstimate`
+    /// for the lockscreen.
+    var queueChapterProgressForTesting: Double { queue.chapterProgress }
+    /// Test seam: re-derive the published progress pair on demand. The
+    /// production trigger for between-boundary updates is the 1 s
+    /// fine-progress tick (added with the mini-player UI).
+    func publishProgressForTesting() { publishProgress() }
     /// Test inspection: novel/chapter titles cached from the provider; production
     /// reads them internally for Now Playing metadata.
     var novelTitleForTesting: String { novelTitle }
@@ -860,10 +866,26 @@ final class TTSManager: NSObject, ObservableObject {
         }
         // Between paragraph boundaries the estimator's elapsed is static;
         // while playing, add the in-utterance wall time so the 1 s tick
-        // moves smoothly. Clamped so a long-running utterance can't run
-        // past the paragraph's estimated share.
-        if isPlaying, let startedAt = currentUtteranceStartedAt {
-            elapsed = min(duration, elapsed + now().timeIntervalSince(startedAt))
+        // moves smoothly. Capped at the next paragraph boundary's elapsed
+        // (chapter end for the final paragraph) so an utterance that runs
+        // longer than its estimated share can't sweep past the boundary —
+        // the cursor advancing would then snap progress backward.
+        if isPlaying, let startedAt = currentUtteranceStartedAt,
+           let chapter = currentNormalizedChapter {
+            var cap = duration
+            let nextIndex = currentPosition.paragraphIndex + 1
+            if nextIndex < chapter.paragraphs.count {
+                let boundary = TTSEstimator.estimate(
+                    position: TextChapterPosition(paragraphIndex: nextIndex),
+                    in: chapter,
+                    rate: Double(rate),
+                    calibratedWPM: calibrator.currentWPM
+                )
+                if let boundaryElapsed = boundary.chapterElapsedSec {
+                    cap = min(cap, boundaryElapsed)
+                }
+            }
+            elapsed = min(cap, elapsed + now().timeIntervalSince(startedAt))
         }
         chapterProgress = min(1.0, max(0.0, elapsed / duration))
         timeRemaining = max(0, duration - elapsed)
