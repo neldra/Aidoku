@@ -58,7 +58,6 @@ class ReaderViewController: BaseObservingViewController {
     private var ttsButton: UIButton?
     private var ttsStateCancellable: AnyCancellable?
     private var ttsMiniPlayerHost: UIHostingController<TTSMiniPlayerView>?
-    private var ttsMiniPlayerBottomConstraint: NSLayoutConstraint?
     private var ttsMiniPlayerActiveSink: AnyCancellable?
 
     private var squeezeTimer: Timer?
@@ -333,18 +332,12 @@ class ReaderViewController: BaseObservingViewController {
         }
         if #available(iOS 26.0, *) {
             addObserver(forName: UIScene.willEnterForegroundNotification) { [weak self] _ in
-                if self?.navigationController?.toolbar.alpha == 0 {
+                // navbar alpha (not toolbar) is the bars-hidden proxy: during
+                // a TTS session the toolbar is suppressed even with bars up
+                if self?.navigationController?.navigationBar.alpha == 0 {
                     self?.hideBars()
                 }
             }
-        }
-        // ride the existing bar show/hide transitions
-        // (both fire after statusBarHidden has already been flipped)
-        addObserver(forName: .readerShowingBars) { [weak self] _ in
-            self?.ttsMiniPlayerBarsChanged()
-        }
-        addObserver(forName: .readerHidingBars) { [weak self] _ in
-            self?.ttsMiniPlayerBarsChanged()
         }
     }
 
@@ -355,27 +348,24 @@ class ReaderViewController: BaseObservingViewController {
         sessionStartDate = Date.now
         sessionLastInteraction = nil
 
-        if navigationController?.toolbar.alpha == 0 {
+        // navbar alpha (not toolbar) is the bars-hidden proxy here: during a
+        // TTS session the toolbar is suppressed independently of the bar state
+        if navigationController?.navigationBar.alpha == 0 {
             hideBars()
         }
 
         // there's a bug on ios 15 where the toolbar just disappears when adding a child hosting controller
-        navigationController?.isToolbarHidden = false
-        navigationController?.toolbar.alpha = 1
+        // (skipped during a TTS session — the toolbar yields to the capsule)
+        if !TTSManager.shared.isActive {
+            navigationController?.isToolbarHidden = false
+            navigationController?.toolbar.alpha = 1
+        }
 
         disableSwipeGestures()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // self-heal the mini-player clearance: the bar show/hide notification
-        // can measure a mid-flight toolbar frame, so re-read it once layout
-        // settles (no animation in a layout pass; only touch it on change to
-        // avoid re-dirtying layout every pass)
-        let inset = ttsMiniPlayerBottomInset
-        if let constraint = ttsMiniPlayerBottomConstraint, constraint.constant != inset {
-            constraint.constant = inset
-        }
         if #unavailable(iOS 16.0) {
             // pre-16 UIHostingController has no sizingOptions and doesn't
             // invalidate its intrinsic size when the SwiftUI content grows;
@@ -1135,13 +1125,17 @@ extension ReaderViewController {
             NotificationCenter.default.post(name: .readerShowingBars, object: nil)
 
             UIView.setAnimationsEnabled(false)
+            // during a TTS session the toolbar (page slider) stays hidden —
+            // the mini-player capsule owns the bottom edge; the rest of the
+            // bars show normally (user-chosen design)
+            let ttsActive = TTSManager.shared.isActive
             if #available(iOS 26.0, *) {
-                if navigationController.isToolbarHidden {
+                if navigationController.isToolbarHidden && !ttsActive {
                     (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
                     navigationController.isToolbarHidden = false
                 }
             } else {
-                if navigationController.toolbar.isHidden {
+                if navigationController.toolbar.isHidden && !ttsActive {
                     navigationController.toolbar.alpha = 0
                     navigationController.toolbar.isHidden = false
                 }
@@ -1357,31 +1351,6 @@ extension ReaderViewController {
         }
     }
 
-    /// Bottom clearance for the mini-player capsule: above the home indicator
-    /// when the bars are hidden; lifted clear of the toolbar when visible.
-    /// The toolbar clearance is measured from the actual bar frame because the
-    /// iOS 26 floating bars sit higher than the classic docked toolbar, so a
-    /// fixed constant leaves a gap of page content between capsule and bar.
-    private var ttsMiniPlayerBottomInset: CGFloat {
-        guard !barsHidden else { return -24 }
-        // same KVC access to the floating bar container that showBars()/
-        // hideBars() use on iOS 26; pre-26 the toolbar is a regular UIToolbar
-        let bar: UIView? = if #available(iOS 26.0, *) {
-            navigationController?.value(forKey: "_floatingBarContainerView") as? UIView
-        } else {
-            navigationController?.toolbar
-        }
-        // fallback for unmeasurable bars: ~44pt toolbar height + 14pt gap
-        let fallback: CGFloat = -58
-        guard let bar, bar.frame.width > 0, bar.frame.height > 0 else { return fallback }
-        let barTop = bar.convert(bar.bounds, to: view).minY
-        let inset = -(view.safeAreaLayoutGuide.layoutFrame.maxY - barTop + 10)
-        // reject mid-flight/offscreen frames (bar below the safe area or an
-        // implausibly tall overlap)
-        guard inset > -200, inset < -10 else { return fallback }
-        return min(inset, -24)
-    }
-
     private func setupTTSMiniPlayer() {
         let host = UIHostingController(rootView: TTSMiniPlayerView())
         if #available(iOS 16.0, *) {
@@ -1395,17 +1364,15 @@ extension ReaderViewController {
         view.addSubview(host.view)
         host.didMove(toParent: self)
         host.view.translatesAutoresizingMaskIntoConstraints = false
-        let bottom = host.view.bottomAnchor.constraint(
-            equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-            constant: ttsMiniPlayerBottomInset
-        )
         NSLayoutConstraint.activate([
             host.view.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 14),
             host.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
-            bottom
+            // one fixed home, 24pt above the safe area: the page slider yields
+            // to the capsule during narration (user-chosen design), so there
+            // is never a toolbar to clear and the capsule never moves
+            host.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24)
         ])
         ttsMiniPlayerHost = host
-        ttsMiniPlayerBottomConstraint = bottom
         // Visibility follows the session; the SwiftUI view stays mounted while
         // hidden (onDisappear does NOT fire for isHidden), so it collapses
         // itself when isActive goes false — which is what makes hiding safe.
@@ -1413,18 +1380,57 @@ extension ReaderViewController {
         ttsMiniPlayerActiveSink = TTSManager.shared.$isActive
             .receive(on: DispatchQueue.main)
             .sink { [weak self] active in
-                self?.ttsMiniPlayerHost?.view.isHidden = !active
+                guard let self else { return }
+                self.ttsMiniPlayerHost?.view.isHidden = !active
+                // swap slider <-> capsule when the session starts/ends with
+                // the bars up; showBars() handles the bars-hidden case itself
+                // (nil-safe: this also fires during reader teardown via
+                // TTSManager.stop(), when navigationController may be gone)
+                if !self.barsHidden {
+                    self.setReaderToolbarHidden(active)
+                }
             }
     }
 
-    private func ttsMiniPlayerBarsChanged() {
-        // The bar notifications fire from the first animation's completion,
-        // before the toolbar frame settles in the second — so this can read a
-        // mid-flight frame. viewDidLayoutSubviews re-reads the inset once
-        // layout settles and corrects it a beat later.
-        ttsMiniPlayerBottomConstraint?.constant = ttsMiniPlayerBottomInset
-        UIView.animate(withDuration: CATransaction.animationDuration()) {
-            self.view.layoutIfNeeded()
+    /// Shows or hides just the reader's bottom toolbar (page slider), leaving
+    /// the rest of the bars alone — the slider yields the bottom edge to the
+    /// TTS capsule for the duration of a session. Mirrors the toolbar halves
+    /// of showBars()/hideBars(), including the iOS 26 floating bar KVC.
+    private func setReaderToolbarHidden(_ hidden: Bool) {
+        guard let navigationController else { return }
+        if hidden {
+            UIView.animate(withDuration: CATransaction.animationDuration()) {
+                navigationController.toolbar.alpha = 0
+                if #available(iOS 26.0, *) {
+                    (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
+                }
+            } completion: { _ in
+                if #available(iOS 26.0, *) {
+                    navigationController.isToolbarHidden = true
+                } else {
+                    navigationController.toolbar.isHidden = true
+                }
+            }
+        } else {
+            UIView.setAnimationsEnabled(false)
+            if #available(iOS 26.0, *) {
+                if navigationController.isToolbarHidden {
+                    (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 0
+                    navigationController.isToolbarHidden = false
+                }
+            } else {
+                if navigationController.toolbar.isHidden {
+                    navigationController.toolbar.alpha = 0
+                    navigationController.toolbar.isHidden = false
+                }
+            }
+            UIView.setAnimationsEnabled(true)
+            UIView.animate(withDuration: CATransaction.animationDuration()) {
+                navigationController.toolbar.alpha = 1
+                if #available(iOS 26.0, *) {
+                    (navigationController.value(forKey: "_floatingBarContainerView") as? UIView)?.alpha = 1
+                }
+            }
         }
     }
 }
