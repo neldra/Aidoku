@@ -86,7 +86,7 @@ struct TTSMiniPlayerView: View {
                     .lineLimit(1)
                 Text(timeLeftLabel)
                     .font(.system(size: 10.5).monospacedDigit())
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.primary.opacity(0.65))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -132,7 +132,8 @@ struct TTSMiniPlayerView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Color.primary.opacity(0.45))
                         .frame(width: 34, height: 34)
-                        .contentShape(Rectangle())
+                        // Ink stays 34pt; inset extends the hit target to 44pt.
+                        .contentShape(Rectangle().inset(by: -5))
                 }
                 .accessibilityLabel(NSLocalizedString("CLOSE"))
             }
