@@ -1335,7 +1335,8 @@ extension ReaderViewController {
     }
 
     /// Bottom clearance for the mini-player capsule: above the home indicator
-    /// when the bars are hidden; lifted clear of the toolbar when visible.
+    /// when the bars are hidden; lifted clear of the toolbar when visible
+    /// (-58 = ~44pt toolbar height + 14pt gap above it).
     private var ttsMiniPlayerBottomInset: CGFloat { barsHidden ? -24 : -58 }
 
     private func setupTTSMiniPlayer() {
@@ -1350,18 +1351,18 @@ extension ReaderViewController {
             constant: ttsMiniPlayerBottomInset
         )
         NSLayoutConstraint.activate([
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            host.view.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 14),
+            host.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
             bottom
         ])
         ttsMiniPlayerHost = host
         ttsMiniPlayerBottomConstraint = bottom
-        // Visibility follows the session; the SwiftUI view itself stays
-        // mounted so expand state and fine-progress observers tear down via
-        // its own onDisappear/onChange paths.
+        // Visibility follows the session; the SwiftUI view stays mounted while
+        // hidden (onDisappear does NOT fire for isHidden), so it collapses
+        // itself when isActive goes false — which is what makes hiding safe.
         host.view.isHidden = !TTSManager.shared.isActive
         ttsMiniPlayerActiveSink = TTSManager.shared.$isActive
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] active in
                 self?.ttsMiniPlayerHost?.view.isHidden = !active
             }

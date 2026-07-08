@@ -39,6 +39,14 @@ struct TTSMiniPlayerView: View {
         .onChange(of: isExpanded) { expanded in
             if expanded { tts.beginFineProgressUpdates() } else { tts.endFineProgressUpdates() }
         }
+        // Collapse when the session ends: the host hides (not unmounts) this
+        // view on isActive = false, so onDisappear won't fire — without this,
+        // an expanded capsule would keep its fine-progress task alive and
+        // reappear expanded with stale state next session. No animation: the
+        // view is already hidden at this point.
+        .onChange(of: tts.isActive) { active in
+            if !active { isExpanded = false }
+        }
         .onDisappear {
             if isExpanded {
                 tts.endFineProgressUpdates()
