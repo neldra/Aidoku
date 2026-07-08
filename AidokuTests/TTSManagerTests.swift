@@ -761,4 +761,38 @@ private final class StubProvider: TTSChapterProvider {
         manager.seek(toProgress: -0.3)
         #expect(manager.currentParagraphIndexForTesting == 0)
     }
+
+    @Test("chapterProgress and timeRemaining publish as the cursor advances")
+    func progressPublishesOnAdvance() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.\n\nC.\n\nD.", startIndex: 0)
+        let initialRemaining = manager.timeRemaining
+        #expect(manager.chapterProgress >= 0 && manager.chapterProgress < 0.5)
+        #expect(initialRemaining != nil)
+
+        manager.skipForward()
+        manager.skipForward()
+
+        #expect(manager.chapterProgress > 0.3)
+        if let initialRemaining, let nowRemaining = manager.timeRemaining {
+            #expect(nowRemaining < initialRemaining)
+        } else {
+            Issue.record("timeRemaining should be non-nil during an active session")
+        }
+    }
+
+    @Test("stop resets published progress")
+    func progressResetsOnStop() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.", startIndex: 1)
+        manager.stop()
+        #expect(manager.chapterProgress == 0)
+        #expect(manager.timeRemaining == nil)
+    }
 }

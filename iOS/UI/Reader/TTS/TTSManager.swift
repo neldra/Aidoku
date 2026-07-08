@@ -48,6 +48,13 @@ final class TTSManager: NSObject, ObservableObject {
     /// index range; an un-merged one produces a single-index span.
     @Published private(set) var currentLocalDisplayRange: Range<Int>?
     @Published var artwork: UIImage?
+    /// Chapter-local playback progress 0...1, for the mini-player scrub/
+    /// hairline. Paragraph-boundary granularity, plus a 1 s wall-clock tick
+    /// while `beginFineProgressUpdates()` observers exist.
+    @Published private(set) var chapterProgress: Double = 0
+    /// Estimated seconds left in the current chapter, or nil when no
+    /// normalized chapter/estimate is available (mini-player shows "—:—").
+    @Published private(set) var timeRemaining: TimeInterval?
     private var novelTitle = ""
     private var currentChapterTitle = ""
     /// When true, the chapter title is spoken before the first paragraph of
@@ -550,6 +557,8 @@ final class TTSManager: NSObject, ObservableObject {
         currentNormalizedChapter = nil
         normalizedChapterCache.removeAll()
         currentLocalDisplayRange = nil
+        chapterProgress = 0
+        timeRemaining = nil
         deactivateAudioSession()
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = nil
@@ -791,6 +800,7 @@ final class TTSManager: NSObject, ObservableObject {
     }
 
     private func updateNowPlaying() {
+        publishProgress()
         guard isActive else { return }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: currentChapterTitle,
@@ -835,6 +845,28 @@ final class TTSManager: NSObject, ObservableObject {
             rate: Double(rate),
             calibratedWPM: calibrator.currentWPM
         )
+    }
+
+    /// Re-derive the published progress pair from the estimator. Called from
+    /// `updateNowPlaying()` (which every cursor/state transition already
+    /// funnels through) and from the fine-progress tick.
+    private func publishProgress() {
+        let estimate = currentEstimate()
+        guard let duration = estimate.chapterDurationSec, duration > 0,
+              var elapsed = estimate.chapterElapsedSec else {
+            chapterProgress = 0
+            timeRemaining = nil
+            return
+        }
+        // Between paragraph boundaries the estimator's elapsed is static;
+        // while playing, add the in-utterance wall time so the 1 s tick
+        // moves smoothly. Clamped so a long-running utterance can't run
+        // past the paragraph's estimated share.
+        if isPlaying, let startedAt = currentUtteranceStartedAt {
+            elapsed = min(duration, elapsed + now().timeIntervalSince(startedAt))
+        }
+        chapterProgress = min(1.0, max(0.0, elapsed / duration))
+        timeRemaining = max(0, duration - elapsed)
     }
 
     /// Swap `currentNormalizedChapter` to the entry the cursor is now in.
