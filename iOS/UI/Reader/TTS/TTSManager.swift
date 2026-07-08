@@ -1308,11 +1308,18 @@ final class TTSManager: NSObject, ObservableObject {
     }
 
     /// Called when an utterance finishes naturally: advance, or load next chapter.
-    fileprivate func handleUtteranceFinished(continuePlaying shouldContinuePlaying: Bool = true) {
+    fileprivate func handleUtteranceFinished(
+        continuePlaying shouldContinuePlaying: Bool = true,
+        honorEndOfChapterTimer: Bool = true
+    ) {
         // End-of-chapter sleep timer: the paragraph that just finished was
         // the chapter's last → end the session here rather than advancing
         // into an appended chapter or kicking off a next-chapter load.
-        if sleepTimer == .endOfChapter, queue.index >= queue.lastIndexOfCurrentChapter {
+        // Only natural finishes consume the timer; an explicit user
+        // chapter-skip bypasses consumption (honorEndOfChapterTimer: false)
+        // and the still-armed timer re-applies to the new chapter's end.
+        if honorEndOfChapterTimer, sleepTimer == .endOfChapter,
+           queue.index >= queue.lastIndexOfCurrentChapter {
             stop()
             return
         }
@@ -1368,7 +1375,10 @@ final class TTSManager: NSObject, ObservableObject {
         // Reuse the natural end-of-chapter path: jump to the last paragraph
         // of the current chapter and let finish-handling roll into the next.
         queue.seek(to: queue.lastIndexOfCurrentChapter)
-        handleUtteranceFinished(continuePlaying: shouldContinuePlaying)
+        handleUtteranceFinished(
+            continuePlaying: shouldContinuePlaying,
+            honorEndOfChapterTimer: false
+        )
     }
 
     /// Lock-screen / remote "previous track": restart the current chapter,

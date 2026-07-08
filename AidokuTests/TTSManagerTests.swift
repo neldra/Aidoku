@@ -928,6 +928,33 @@ private final class StubProvider: TTSChapterProvider {
         #expect(backend.spoken == ["A.", "B."])      // c2 never played
     }
 
+    @Test("explicit next-track skips with endOfChapter timer still armed")
+    func nextTrackSurvivesEndOfChapterTimer() async {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        let provider = StubProvider()
+        provider.nextChapter = (chapterKey: "c2", text: "X.\n\nY.")
+        manager.start(provider: provider, chapterKey: "c1",
+                      text: "A.\n\nB.", startIndex: 0)
+        manager.setSleepTimer(.endOfChapter)
+
+        // Explicit user action: must advance into c2, timer stays armed.
+        manager.skipToNextChapter()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        #expect(manager.isActive)
+        #expect(manager.currentChapterKey == "c2")
+        #expect(manager.sleepTimer == .endOfChapter)
+
+        // Natural finish of c2's last paragraph: NOW the timer consumes.
+        let spokenCount = backend.utteranceIDs.count
+        backend.simulateFinish(utteranceID: backend.utteranceIDs[spokenCount - 1]) // finishes "X."
+        #expect(manager.isActive)
+        backend.simulateFinish(utteranceID: backend.utteranceIDs.last!)            // finishes "Y." (last of c2)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        #expect(!manager.isActive)
+        #expect(manager.sleepTimer == .off)
+    }
+
     @Test("non-positive minute sleep timers are treated as off")
     func sleepTimerRejectsNonPositiveMinutes() {
         let backend = MockBackend()
