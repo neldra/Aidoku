@@ -21,7 +21,9 @@
 "RENAME" = "Rename";
 "CLEAR" = "Clear";
 "PAUSE" = "Pause";
+"PLAY" = "Play";
 "RESUME" = "Resume";
+"CLOSE" = "Close";
 "LOADING_ELLIPSIS" = "Loading…";
 "SHARE" = "Share";
 "COPY" = "Copy";
@@ -596,6 +598,21 @@
 "TTS_SUPERTONIC3_RETRY" = "Retry Download";
 "TTS_SUPERTONIC3_FAILED" = "Download Failed";
 "TTS_SUPERTONIC3_NEEDS_WIFI" = "Connect to Wi-Fi to download neural voices.";
+
+// TTS mini-player
+"TTS_TIME_LEFT" = "%@ left";
+"TTS_SLEEP_TIMER" = "Sleep Timer";
+"TTS_SLEEP_OFF" = "Off";
+"TTS_SLEEP_15_MIN" = "15 minutes";
+"TTS_SLEEP_30_MIN" = "30 minutes";
+"TTS_SLEEP_60_MIN" = "1 hour";
+"TTS_SLEEP_END_OF_CHAPTER" = "End of chapter";
+"TTS_STOP_LISTENING" = "Stop Listening";
+"TTS_JUMP_TO_CURRENT" = "Jump to Current Paragraph";
+"TTS_PREVIOUS_CHAPTER" = "Previous Chapter";
+"TTS_NEXT_CHAPTER" = "Next Chapter";
+"TTS_SKIP_BACK_15" = "Back 15 Seconds";
+"TTS_SKIP_FORWARD_15" = "Forward 15 Seconds";
 
 // Backups
 "BACKUPS" = "Backups";

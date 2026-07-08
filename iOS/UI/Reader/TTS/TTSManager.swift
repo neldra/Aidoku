@@ -68,7 +68,7 @@ final class TTSManager: NSObject, ObservableObject {
     private var sleepDeadline: Date?
     private var sleepTask: Task<Void, Never>?
     private var novelTitle = ""
-    private var currentChapterTitle = ""
+    @Published private(set) var currentChapterTitle = ""
     /// When true, the chapter title is spoken before the first paragraph of
     /// every chapter the narration enters.
     @Published var announceChapterTitles = false {
@@ -1036,6 +1036,12 @@ final class TTSManager: NSObject, ObservableObject {
         )
         seek(to: newPosition)
     }
+
+    /// Mini-player transport: jump 15 seconds forward.
+    func skipForward15() { skipBy(seconds: 15) }
+
+    /// Mini-player transport: jump 15 seconds back.
+    func skipBackward15() { skipBy(seconds: -15) }
 
     /// Seek to an absolute elapsed time within the current chapter. Handler
     /// for `MPRemoteCommandCenter.changePlaybackPositionCommand` (lockscreen
