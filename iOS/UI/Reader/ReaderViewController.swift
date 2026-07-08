@@ -57,6 +57,9 @@ class ReaderViewController: BaseObservingViewController {
     private var ttsBarButton: UIBarButtonItem?
     private var ttsButton: UIButton?
     private var ttsStateCancellable: AnyCancellable?
+    private var ttsMiniPlayerHost: UIHostingController<TTSMiniPlayerView>?
+    private var ttsMiniPlayerBottomConstraint: NSLayoutConstraint?
+    private var ttsMiniPlayerActiveSink: AnyCancellable?
 
     private var squeezeTimer: Timer?
     private var longSqueezeTimer: Timer?
@@ -256,6 +259,9 @@ class ReaderViewController: BaseObservingViewController {
 
         // load chapter list
         loadCurrentChapter()
+
+        // tts mini-player capsule (added last so it stays above the reader content)
+        setupTTSMiniPlayer()
     }
 
     override func constrain() {
@@ -331,6 +337,14 @@ class ReaderViewController: BaseObservingViewController {
                     self?.hideBars()
                 }
             }
+        }
+        // ride the existing bar show/hide transitions
+        // (both fire after statusBarHidden has already been flipped)
+        addObserver(forName: .readerShowingBars) { [weak self] _ in
+            self?.ttsMiniPlayerBarsChanged()
+        }
+        addObserver(forName: .readerHidingBars) { [weak self] _ in
+            self?.ttsMiniPlayerBarsChanged()
         }
     }
 
@@ -1317,6 +1331,46 @@ extension ReaderViewController {
             if let image = try? await ImagePipeline.shared.image(for: resolved) {
                 await MainActor.run { TTSManager.shared.artwork = image }
             }
+        }
+    }
+
+    /// Bottom clearance for the mini-player capsule: above the home indicator
+    /// when the bars are hidden; lifted clear of the toolbar when visible.
+    private var ttsMiniPlayerBottomInset: CGFloat { barsHidden ? -24 : -58 }
+
+    private func setupTTSMiniPlayer() {
+        let host = UIHostingController(rootView: TTSMiniPlayerView())
+        host.view.backgroundColor = .clear
+        addChild(host)
+        view.addSubview(host.view)
+        host.didMove(toParent: self)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        let bottom = host.view.bottomAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+            constant: ttsMiniPlayerBottomInset
+        )
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            bottom
+        ])
+        ttsMiniPlayerHost = host
+        ttsMiniPlayerBottomConstraint = bottom
+        // Visibility follows the session; the SwiftUI view itself stays
+        // mounted so expand state and fine-progress observers tear down via
+        // its own onDisappear/onChange paths.
+        host.view.isHidden = !TTSManager.shared.isActive
+        ttsMiniPlayerActiveSink = TTSManager.shared.$isActive
+            .receive(on: RunLoop.main)
+            .sink { [weak self] active in
+                self?.ttsMiniPlayerHost?.view.isHidden = !active
+            }
+    }
+
+    private func ttsMiniPlayerBarsChanged() {
+        ttsMiniPlayerBottomConstraint?.constant = ttsMiniPlayerBottomInset
+        UIView.animate(withDuration: CATransaction.animationDuration()) {
+            self.view.layoutIfNeeded()
         }
     }
 }
