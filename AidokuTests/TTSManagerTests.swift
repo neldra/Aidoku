@@ -821,4 +821,26 @@ private final class StubProvider: TTSChapterProvider {
         #expect(manager.chapterProgress <= 0.25 + 0.0001)
         #expect(manager.chapterProgress < 0.5)
     }
+
+    @Test("fine progress tick runs only while observers are registered")
+    func fineProgressLifecycle() {
+        let backend = MockBackend()
+        let manager = TTSManager(backend: backend)
+        #expect(manager.fineProgressActiveForTesting == false)
+
+        manager.beginFineProgressUpdates()
+        #expect(manager.fineProgressActiveForTesting == true)
+        manager.beginFineProgressUpdates()   // second observer
+        manager.endFineProgressUpdates()     // one leaves
+        #expect(manager.fineProgressActiveForTesting == true)
+        manager.endFineProgressUpdates()     // last leaves
+        #expect(manager.fineProgressActiveForTesting == false)
+
+        // Unbalanced end must not underflow into a stuck-on state next begin.
+        manager.endFineProgressUpdates()
+        manager.beginFineProgressUpdates()
+        #expect(manager.fineProgressActiveForTesting == true)
+        manager.endFineProgressUpdates()
+        #expect(manager.fineProgressActiveForTesting == false)
+    }
 }

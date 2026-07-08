@@ -165,6 +165,10 @@ final class TTSManager: NSObject, ObservableObject {
     /// output back into the merge layer).
     private var normalizedChapterCache: [String: NormalizedTextChapter] = [:]
     private var calibrator = WPMCalibrator()
+    /// Count of live fine-progress observers (expanded mini-players). The
+    /// 1 s tick Task exists only while this is > 0.
+    private var fineProgressObservers = 0
+    private var fineProgressTask: Task<Void, Never>?
     /// Character offset into the next paragraph utterance — set by
     /// mid-paragraph seeks (lockscreen scrub / ±15s) and consumed once by
     /// `speakCurrent`. Without it the backend would restart the paragraph
@@ -527,6 +531,30 @@ final class TTSManager: NSObject, ObservableObject {
         }
     }
 
+    /// The mini-player calls this when its expanded state appears; while any
+    /// observer is registered a 1 s tick re-publishes `chapterProgress`/
+    /// `timeRemaining` so the scrub bar moves between paragraph boundaries.
+    /// Balanced with `endFineProgressUpdates()`; idempotent per observer.
+    func beginFineProgressUpdates() {
+        fineProgressObservers += 1
+        guard fineProgressTask == nil else { return }
+        fineProgressTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                if self.isActive { self.publishProgress() }
+            }
+        }
+    }
+
+    func endFineProgressUpdates() {
+        fineProgressObservers = max(0, fineProgressObservers - 1)
+        if fineProgressObservers == 0 {
+            fineProgressTask?.cancel()
+            fineProgressTask = nil
+        }
+    }
+
     /// Restart the current chapter from its first paragraph.
     func resetChapter() {
         performQueueMutation {
@@ -598,6 +626,8 @@ final class TTSManager: NSObject, ObservableObject {
     /// production trigger for between-boundary updates is the 1 s
     /// fine-progress tick (added with the mini-player UI).
     func publishProgressForTesting() { publishProgress() }
+    /// Test inspection: whether the fine-progress tick Task is alive.
+    var fineProgressActiveForTesting: Bool { fineProgressTask != nil }
     /// Test inspection: novel/chapter titles cached from the provider; production
     /// reads them internally for Now Playing metadata.
     var novelTitleForTesting: String { novelTitle }
